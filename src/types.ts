@@ -71,4 +71,10 @@ export interface AssetRecord {
   layer: Layer
 }
 
+export interface Relation {
+  source: string
+  target: string
+  direction: string
+}
+
 export type AppView = 'upload' | 'preview' | 'lineage' | 'processed'

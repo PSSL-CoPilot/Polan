@@ -7,27 +7,34 @@ import {
   Position,
   ReactFlow,
   ReactFlowProvider,
+  useReactFlow,
   type NodeProps,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import {
-  Check,
+  ArrowLeftRight,
   ChevronRight,
+  Crosshair,
   Database,
   ExternalLink,
   FileBarChart2,
   Layers3,
   PanelRightClose,
+  Plus,
   Search,
   Table2,
   X,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { AssetRecord, AssetType, ProcessedRow } from '../types'
 import {
+  ASSET_COLORS,
+  buildFocusedView,
   buildLineage,
   getConnectedIds,
+  pickDefaultFocus,
   type AssetNode,
+  type ExpanderNode,
 } from '../utils/lineage'
 
 interface LineageGraphProps {
@@ -38,21 +45,23 @@ const assetConfig: Record<
   AssetType,
   { label: string; color: string; icon: typeof Database }
 > = {
-  bigquery: { label: 'BigQuery', color: '#6f63e8', icon: Database },
-  powerbi: { label: 'Power BI table', color: '#e5a82d', icon: Table2 },
-  dataset: { label: 'Dataset', color: '#26968a', icon: Layers3 },
-  report: { label: 'Report', color: '#e1695d', icon: FileBarChart2 },
-  unknown: { label: 'Unknown asset', color: '#75808f', icon: Database },
+  bigquery: { label: 'BigQuery', color: ASSET_COLORS.bigquery, icon: Database },
+  powerbi: { label: 'Power BI table', color: ASSET_COLORS.powerbi, icon: Table2 },
+  dataset: { label: 'Dataset', color: ASSET_COLORS.dataset, icon: Layers3 },
+  report: { label: 'Report', color: ASSET_COLORS.report, icon: FileBarChart2 },
+  unknown: { label: 'Unknown asset', color: ASSET_COLORS.unknown, icon: Database },
 }
 
 function AssetNodeCard({ data }: NodeProps<AssetNode>) {
-  const { asset, isDimmed, isSelected } = data
+  const { asset, isDimmed, isSelected, isFocus } = data
   const config = assetConfig[asset.type]
   const Icon = config.icon
 
   return (
     <div
-      className={`asset-node ${isSelected ? 'selected' : ''} ${isDimmed ? 'dimmed' : ''}`}
+      className={`asset-node ${isSelected ? 'selected' : ''} ${
+        isFocus ? 'is-focus' : ''
+      } ${isDimmed ? 'dimmed' : ''}`}
       style={{ '--asset-color': config.color } as React.CSSProperties}
     >
       <Handle type="target" position={Position.Left} />
@@ -63,29 +72,102 @@ function AssetNodeCard({ data }: NodeProps<AssetNode>) {
         <span>{config.label}</span>
         <strong>{asset.name}</strong>
       </div>
-      <ChevronRight className="node-chevron" size={16} />
+      {isFocus ? (
+        <span className="focus-pill">Focus</span>
+      ) : (
+        <ChevronRight className="node-chevron" size={16} />
+      )}
       <Handle type="source" position={Position.Right} />
     </div>
   )
 }
 
-const nodeTypes = { asset: AssetNodeCard }
+function ExpanderNodeCard({ data }: NodeProps<ExpanderNode>) {
+  return (
+    <div className={`expander-node ${data.side}`}>
+      <Handle type="target" position={Position.Left} />
+      <span className="expander-plus">
+        <Plus size={14} />
+      </span>
+      <div className="expander-copy">
+        <strong>Show {Math.min(3, data.hiddenCount)} more</strong>
+        <span>{data.hiddenCount} hidden</span>
+      </div>
+      <Handle type="source" position={Position.Right} />
+    </div>
+  )
+}
+
+const nodeTypes = { asset: AssetNodeCard, expander: ExpanderNodeCard }
+
+function RelationshipList({
+  title,
+  items,
+  onSelect,
+}: {
+  title: string
+  items: AssetRecord[]
+  onSelect: (id: string) => void
+}) {
+  const [shown, setShown] = useState(3)
+  useEffect(() => setShown(3), [items])
+  const visible = items.slice(0, shown)
+  const hidden = items.length - visible.length
+
+  return (
+    <div className="relationship-group">
+      <span>
+        {title} · {items.length}
+      </span>
+      {visible.map((item) => (
+        <button
+          className="relationship-item"
+          key={item.id}
+          onClick={() => onSelect(item.id)}
+          type="button"
+        >
+          <i style={{ background: assetConfig[item.type].color }} />
+          <strong>{item.name}</strong>
+          <ExternalLink size={13} />
+        </button>
+      ))}
+      {!items.length && <p>None connected.</p>}
+      {hidden > 0 && (
+        <button
+          className="relationship-more"
+          onClick={() => setShown((value) => value + 3)}
+          type="button"
+        >
+          Show {Math.min(3, hidden)} more
+        </button>
+      )}
+    </div>
+  )
+}
 
 function DetailsPanel({
   asset,
   assets,
+  isFocus,
   onClose,
+  onFocus,
+  onSelect,
 }: {
   asset: AssetRecord
   assets: Map<string, AssetRecord>
+  isFocus: boolean
   onClose: () => void
+  onFocus: (id: string) => void
+  onSelect: (id: string) => void
 }) {
   const config = assetConfig[asset.type]
   const Icon = config.icon
-  const upstream = asset.upstreamIds.map((id) => assets.get(id)).filter(Boolean)
+  const upstream = asset.upstreamIds
+    .map((id) => assets.get(id))
+    .filter((value): value is AssetRecord => Boolean(value))
   const downstream = asset.downstreamIds
     .map((id) => assets.get(id))
-    .filter(Boolean)
+    .filter((value): value is AssetRecord => Boolean(value))
 
   return (
     <aside className="details-panel">
@@ -108,10 +190,15 @@ function DetailsPanel({
         </div>
       </div>
 
-      <div className="verified-line">
-        <Check size={14} />
-        Metadata enriched
-      </div>
+      <button
+        className="focus-button"
+        disabled={isFocus}
+        onClick={() => onFocus(asset.id)}
+        type="button"
+      >
+        <Crosshair size={14} />
+        {isFocus ? 'Centred in graph' : 'Center lineage on this asset'}
+      </button>
 
       <div className="details-section">
         <h4>Governance</h4>
@@ -131,7 +218,11 @@ function DetailsPanel({
           <div>
             <dt>Layer</dt>
             <dd>
-              <span className={`layer-badge ${asset.layer.toLowerCase().replace(' ', '-')}`}>
+              <span
+                className={`layer-badge ${asset.layer
+                  .toLowerCase()
+                  .replace(' ', '-')}`}
+              >
                 {asset.layer}
               </span>
             </dd>
@@ -151,28 +242,16 @@ function DetailsPanel({
 
       <div className="details-section">
         <h4>Relationships</h4>
-        <div className="relationship-group">
-          <span>Upstream · {upstream.length}</span>
-          {upstream.map((item) => (
-            <div className="relationship-item" key={item!.id}>
-              <i style={{ background: assetConfig[item!.type].color }} />
-              <strong>{item!.name}</strong>
-              <ExternalLink size={13} />
-            </div>
-          ))}
-          {!upstream.length && <p>No upstream assets connected.</p>}
-        </div>
-        <div className="relationship-group">
-          <span>Downstream · {downstream.length}</span>
-          {downstream.map((item) => (
-            <div className="relationship-item" key={item!.id}>
-              <i style={{ background: assetConfig[item!.type].color }} />
-              <strong>{item!.name}</strong>
-              <ExternalLink size={13} />
-            </div>
-          ))}
-          {!downstream.length && <p>No downstream assets connected.</p>}
-        </div>
+        <RelationshipList
+          items={upstream}
+          onSelect={onSelect}
+          title="Upstream"
+        />
+        <RelationshipList
+          items={downstream}
+          onSelect={onSelect}
+          title="Downstream"
+        />
       </div>
     </aside>
   )
@@ -180,103 +259,195 @@ function DetailsPanel({
 
 function GraphCanvas({ rows }: LineageGraphProps) {
   const graph = useMemo(() => buildLineage(rows), [rows])
+  const { fitView } = useReactFlow()
+
+  const sortedAssets = useMemo(
+    () =>
+      Array.from(graph.assets.values()).sort((a, b) => {
+        const degree = (asset: AssetRecord) =>
+          asset.upstreamIds.length + asset.downstreamIds.length
+        return degree(b) - degree(a) || a.name.localeCompare(b.name)
+      }),
+    [graph.assets],
+  )
+
+  const [focusId, setFocusId] = useState<string | null>(null)
+  const [expansions, setExpansions] = useState<Record<string, number>>({})
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [typeFilter, setTypeFilter] = useState<AssetType | 'all'>('all')
-  const effectiveSelectedId =
-    selectedId && graph.assets.has(selectedId) ? selectedId : null
-  const connected = getConnectedIds(effectiveSelectedId, graph.edges)
-  const query = search.trim().toLowerCase()
-  const visibleIds = new Set(
-    graph.nodes
-      .filter((node) => {
-        const matchesType =
-          typeFilter === 'all' || node.data.asset.type === typeFilter
-        const matchesSearch =
-          !query || node.data.asset.name.toLowerCase().includes(query)
-        return matchesType && matchesSearch
-      })
-      .map((node) => node.id),
+
+  // Reset the anchor whenever a new workbook / sheet is loaded.
+  useEffect(() => {
+    setFocusId(pickDefaultFocus(graph.assets))
+    setExpansions({})
+    setSelectedId(null)
+    setSearch('')
+  }, [graph])
+
+  const effectiveFocusId =
+    focusId && graph.assets.has(focusId)
+      ? focusId
+      : pickDefaultFocus(graph.assets)
+
+  const view = useMemo(
+    () =>
+      effectiveFocusId
+        ? buildFocusedView(
+            effectiveFocusId,
+            graph.assets,
+            graph.relations,
+            expansions,
+            selectedId,
+          )
+        : null,
+    [effectiveFocusId, graph, expansions, selectedId],
   )
-  const hasFilters = Boolean(query || typeFilter !== 'all')
-  const nodes = graph.nodes.map((node) => ({
-    ...node,
-    hidden: hasFilters && !visibleIds.has(node.id),
-    data: {
-      ...node.data,
-      isSelected: node.id === effectiveSelectedId,
-      isDimmed: Boolean(effectiveSelectedId && !connected.has(node.id)),
-    },
-  }))
-  const edges = graph.edges.map((edge) => ({
+
+  const connected = getConnectedIds(selectedId, view?.edges ?? [])
+
+  const focusOn = (id: string) => {
+    setFocusId(id)
+    setExpansions({})
+    setSelectedId(id)
+    // Let the new layout mount before recentering.
+    window.setTimeout(() => fitView({ padding: 0.18, duration: 420 }), 60)
+  }
+
+  const expandGroup = (groupKey: string) =>
+    setExpansions((current) => ({
+      ...current,
+      [groupKey]: (current[groupKey] ?? 3) + 3,
+    }))
+
+  const nodes = (view?.nodes ?? []).map((node) => {
+    if (node.type === 'expander') return node
+    return {
+      ...node,
+      data: {
+        ...node.data,
+        isDimmed: Boolean(selectedId && !connected.has(node.id)),
+      },
+    }
+  })
+
+  const edges = (view?.edges ?? []).map((edge) => ({
     ...edge,
-    hidden:
-      (hasFilters &&
-        (!visibleIds.has(edge.source) || !visibleIds.has(edge.target))) ||
-      false,
     style: {
       ...edge.style,
       opacity:
-        effectiveSelectedId &&
-        !(
-          edge.source === effectiveSelectedId ||
-          edge.target === effectiveSelectedId
-        )
+        selectedId &&
+        !(edge.source === selectedId || edge.target === selectedId)
           ? 0.12
           : 1,
-      strokeWidth:
-        effectiveSelectedId &&
-        (edge.source === effectiveSelectedId ||
-          edge.target === effectiveSelectedId)
-          ? 2.8
-          : 1.8,
     },
   }))
-  const selectedAsset = effectiveSelectedId
-    ? graph.assets.get(effectiveSelectedId)
+
+  const selectedAsset = selectedId ? graph.assets.get(selectedId) : undefined
+  const focusAsset = effectiveFocusId
+    ? graph.assets.get(effectiveFocusId)
     : undefined
+
+  const searchMatches = search.trim()
+    ? sortedAssets
+        .filter((asset) =>
+          asset.name.toLowerCase().includes(search.trim().toLowerCase()),
+        )
+        .slice(0, 6)
+    : []
+
+  if (!graph.assets.size || !focusAsset) {
+    return (
+      <div className="graph-shell">
+        <div className="empty-table" style={{ minHeight: 460 }}>
+          <ArrowLeftRight size={24} />
+          <strong>No lineage to display</strong>
+          <span>Upload a workbook with valid upstream/downstream rows.</span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="graph-shell">
       <div className="graph-toolbar">
+        <div className="focus-picker">
+          <Crosshair size={15} />
+          <div className="focus-picker-copy">
+            <span>Focused asset</span>
+            <select
+              onChange={(event) => focusOn(event.target.value)}
+              value={effectiveFocusId ?? ''}
+            >
+              {sortedAssets.map((asset) => (
+                <option key={asset.id} value={asset.id}>
+                  {asset.name} · {assetConfig[asset.type].label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
         <div className="graph-search">
           <Search size={16} />
           <input
-            placeholder="Find an asset..."
-            value={search}
             onChange={(event) => setSearch(event.target.value)}
+            placeholder="Find an asset to focus..."
+            value={search}
           />
-        </div>
-        <div className="graph-filters">
-          {(['all', 'bigquery', 'powerbi', 'dataset', 'report'] as const).map(
-            (type) => (
-              <button
-                className={typeFilter === type ? 'active' : ''}
-                key={type}
-                onClick={() => setTypeFilter(type)}
-                type="button"
-              >
-                {type === 'all' ? 'All assets' : assetConfig[type].label}
-              </button>
-            ),
+          {searchMatches.length > 0 && (
+            <div className="search-results">
+              {searchMatches.map((asset) => (
+                <button
+                  key={asset.id}
+                  onClick={() => {
+                    focusOn(asset.id)
+                    setSearch('')
+                  }}
+                  type="button"
+                >
+                  <i style={{ background: assetConfig[asset.type].color }} />
+                  <strong>{asset.name}</strong>
+                  <small>{assetConfig[asset.type].label}</small>
+                </button>
+              ))}
+            </div>
           )}
         </div>
-        <div className="graph-count">{graph.nodes.length} assets</div>
+
+        <div className="graph-count">
+          <span>
+            <i className="upstream-line" /> {view?.upstreamCount ?? 0} upstream
+          </span>
+          <span>
+            <i className="downstream-line" /> {view?.downstreamCount ?? 0}{' '}
+            downstream
+          </span>
+        </div>
       </div>
 
       <div className="graph-stage">
         <ReactFlow
-          defaultEdges={edges}
-          defaultNodes={nodes}
           edges={edges}
           fitView
-          fitViewOptions={{ padding: 0.16 }}
-          minZoom={0.35}
+          fitViewOptions={{ padding: 0.18 }}
+          minZoom={0.3}
           maxZoom={1.8}
           nodeTypes={nodeTypes}
           nodes={nodes}
+          nodesConnectable={false}
           nodesDraggable
-          onNodeClick={(_, node) => setSelectedId(node.id)}
+          onNodeClick={(_, node) => {
+            if (node.type === 'expander') {
+              expandGroup((node.data as { groupKey: string }).groupKey)
+              return
+            }
+            setSelectedId(node.id)
+          }}
+          onNodeDoubleClick={(_, node) => {
+            if (node.type === 'asset' && node.id !== effectiveFocusId) {
+              focusOn(node.id)
+            }
+          }}
           onPaneClick={() => setSelectedId(null)}
           proOptions={{ hideAttribution: true }}
         >
@@ -290,25 +461,35 @@ function GraphCanvas({ rows }: LineageGraphProps) {
           <MiniMap
             maskColor="rgba(248, 247, 251, 0.82)"
             nodeColor={(node) =>
-              assetConfig[(node.data as { asset: AssetRecord }).asset.type].color
+              node.type === 'expander'
+                ? '#c4c0d0'
+                : assetConfig[(node.data as { asset: AssetRecord }).asset.type]
+                    .color
             }
             pannable
             position="bottom-right"
             zoomable
           />
           <div className="flow-legend">
-            <span><i className="upstream-line" /> Upstream</span>
-            <span><i className="downstream-line" /> Downstream</span>
+            <span>
+              <i className="upstream-line" /> Upstream
+            </span>
+            <span>
+              <i className="downstream-line" /> Downstream
+            </span>
+            <span className="legend-hint">Double-click a node to re-center</span>
           </div>
         </ReactFlow>
-        {selectedAsset && (
+        {selectedAsset ? (
           <DetailsPanel
             asset={selectedAsset}
             assets={graph.assets}
+            isFocus={selectedAsset.id === effectiveFocusId}
             onClose={() => setSelectedId(null)}
+            onFocus={focusOn}
+            onSelect={(id) => setSelectedId(id)}
           />
-        )}
-        {!selectedAsset && (
+        ) : (
           <div className="panel-hint">
             <PanelRightClose size={16} />
             Select a node to inspect details

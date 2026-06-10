@@ -1,31 +1,79 @@
 import type { Edge, MarkerType, Node } from '@xyflow/react'
-import type { AssetRecord, AssetType, ProcessedRow } from '../types'
+import type {
+  AssetRecord,
+  AssetType,
+  ProcessedRow,
+  Relation,
+} from '../types'
+
+/**
+ * Lineage engine
+ * ----------------------------------------------------------------------------
+ * Two layers live here:
+ *   1. buildLineage()      – turns processed rows into a de-duplicated asset
+ *                            map + directed relations (+ a simple column layout
+ *                            kept for backwards compatibility / tests).
+ *   2. buildFocusedView()  – produces an *anchored* React Flow layout for one
+ *                            focus asset: upstream on the left, downstream on
+ *                            the right, with per-parent "show 3 + Show more"
+ *                            grouping so dense graphs stay readable.
+ *
+ * Edge direction convention (matches the Excel spec):
+ *   upstream   row → edge  ImpactedAsset (BigQuery) → SourceAsset (Power BI)
+ *   downstream row → edge  SourceAsset (Power BI)    → ImpactedAsset (dataset/report)
+ * so an edge always points in the direction data flows.
+ */
 
 export interface AssetNodeData extends Record<string, unknown> {
   asset: AssetRecord
   isSelected: boolean
   isDimmed: boolean
+  isFocus: boolean
+}
+
+export interface ExpanderNodeData extends Record<string, unknown> {
+  kind: 'expander'
+  groupKey: string
+  parentName: string
+  hiddenCount: number
+  side: 'upstream' | 'downstream'
 }
 
 export type AssetNode = Node<AssetNodeData, 'asset'>
+export type ExpanderNode = Node<ExpanderNodeData, 'expander'>
+export type FlowNode = AssetNode | ExpanderNode
 
 const nodeId = (name: string) =>
   name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
 
+/**
+ * Infer an asset type. The Excel spec is authoritative about roles:
+ *   - the Source Asset is always the Power BI table
+ *   - an upstream Impacted Asset is the BigQuery / source table
+ *   - a downstream Impacted Asset is a dataset or a report
+ * Name keywords only disambiguate dataset vs report (and rescue obvious cases).
+ */
 function inferType(
   name: string,
   role: 'source' | 'impacted',
   direction: string,
 ): AssetType {
+  // The Source Asset is, by spec, always the Power BI table — this wins over
+  // any keyword in the name (e.g. "Sales Dashboard Model" is a Power BI table,
+  // not a report).
+  if (role === 'source') return 'powerbi'
+  // Upstream Impacted Assets are the BigQuery / source tables that feed it.
+  if (direction === 'upstream') return 'bigquery'
+  // Downstream Impacted Assets are datasets or reports.
   const value = name.toLowerCase()
-  if (/report|dashboard|scorecard/.test(value)) return 'report'
-  if (/dataset|semantic|model/.test(value)) return 'dataset'
+  if (/report|dashboard|scorecard|paginated|\.rdl/.test(value)) return 'report'
+  if (/semantic|\bdataset\b|\bmodel\b|\.pbix|workspace/.test(value)) {
+    return 'dataset'
+  }
+  if (direction === 'downstream') return 'dataset'
   if (/bigquery|^bq[_ -]|raw[_ -]|fact[_ -]|dim[_ -]/.test(value)) {
     return 'bigquery'
   }
-  if (/power ?bi|pbi|table/.test(value)) return 'powerbi'
-  if (role === 'impacted' && direction === 'upstream') return 'bigquery'
-  if (role === 'source') return 'powerbi'
   return 'unknown'
 }
 
@@ -58,11 +106,74 @@ function emptyAsset(name: string, type: AssetType): AssetRecord {
   }
 }
 
+const ASSET_COLORS: Record<AssetType, string> = {
+  bigquery: '#6f63e8',
+  powerbi: '#e5a82d',
+  dataset: '#26968a',
+  report: '#e1695d',
+  unknown: '#75808f',
+}
+
+/**
+ * Rewire a Power BI table's downstream fan-out into the canonical
+ * Power BI → Dataset → Report chain when the data supports it.
+ *
+ * The spec notes "one or multiple reports connected to one dataset", so when a
+ * Power BI table has exactly one downstream dataset plus one or more reports,
+ * we route those reports *through* the dataset instead of straight off the
+ * table. With multiple datasets the mapping is ambiguous, so we leave the
+ * relations flat rather than guess.
+ */
+function chainDatasetsToReports(
+  relations: Relation[],
+  assets: Map<string, AssetRecord>,
+): Relation[] {
+  const downstreamBySource = new Map<string, Relation[]>()
+  relations.forEach((relation) => {
+    if (relation.direction !== 'downstream') return
+    const bucket = downstreamBySource.get(relation.source) ?? []
+    bucket.push(relation)
+    downstreamBySource.set(relation.source, bucket)
+  })
+
+  const rerouted = new Map<Relation, Relation>()
+  downstreamBySource.forEach((bucket) => {
+    const datasets = bucket.filter(
+      (relation) => assets.get(relation.target)?.type === 'dataset',
+    )
+    const reports = bucket.filter(
+      (relation) => assets.get(relation.target)?.type === 'report',
+    )
+    if (datasets.length === 1 && reports.length) {
+      const datasetId = datasets[0].target
+      reports.forEach((reportRelation) => {
+        rerouted.set(reportRelation, {
+          source: datasetId,
+          target: reportRelation.target,
+          direction: 'downstream',
+        })
+      })
+    }
+  })
+
+  if (!rerouted.size) return relations
+
+  const next: Relation[] = []
+  const seen = new Set<string>()
+  const push = (relation: Relation) => {
+    const key = `${relation.source}->${relation.target}`
+    if (seen.has(key)) return
+    seen.add(key)
+    next.push(relation)
+  }
+  relations.forEach((relation) => push(rerouted.get(relation) ?? relation))
+  return next
+}
+
 export function buildLineage(rows: ProcessedRow[]) {
   const assets = new Map<string, AssetRecord>()
   const relationKeys = new Set<string>()
-  const relations: Array<{ source: string; target: string; direction: string }> =
-    []
+  let relations: Relation[] = []
 
   const upsert = (
     name: string,
@@ -108,14 +219,24 @@ export function buildLineage(rows: ProcessedRow[]) {
     const to = row.direction === 'upstream' ? source : impacted
     const key = `${from.id}->${to.id}`
 
-    if (!relationKeys.has(key)) {
+    if (from.id !== to.id && !relationKeys.has(key)) {
       relationKeys.add(key)
       relations.push({ source: from.id, target: to.id, direction: row.direction })
-      from.downstreamIds.push(to.id)
-      to.upstreamIds.push(from.id)
     }
   })
 
+  // Promote Power BI → Dataset → Report chains, then derive the adjacency
+  // lists from the final relation set so the details panel stays accurate.
+  relations = chainDatasetsToReports(relations, assets)
+  relations.forEach((relation) => {
+    const from = assets.get(relation.source)
+    const to = assets.get(relation.target)
+    if (!from || !to) return
+    if (!from.downstreamIds.includes(to.id)) from.downstreamIds.push(to.id)
+    if (!to.upstreamIds.includes(from.id)) to.upstreamIds.push(from.id)
+  })
+
+  // Lightweight column layout retained for the overview / unit tests.
   const columns: AssetType[] = [
     'bigquery',
     'powerbi',
@@ -145,34 +266,31 @@ export function buildLineage(rows: ProcessedRow[]) {
         id: asset.id,
         type: 'asset',
         position: { x: columnX[type], y: startY + index * gap },
-        data: { asset, isSelected: false, isDimmed: false },
+        data: { asset, isSelected: false, isDimmed: false, isFocus: false },
       })
     })
   })
 
-  const edges: Edge[] = relations.map((relation, index) => ({
+  const edges: Edge[] = relations.map((relation, index) =>
+    makeEdge(relation, index),
+  )
+
+  return { nodes, edges, assets, relations }
+}
+
+function makeEdge(relation: Relation, index: number): Edge {
+  return {
     id: `edge-${index}-${relation.source}-${relation.target}`,
     source: relation.source,
     target: relation.target,
     type: 'smoothstep',
     animated: relation.direction === 'downstream',
-    markerEnd: {
-      type: 'arrowclosed' as MarkerType,
-      width: 16,
-      height: 16,
-    },
+    markerEnd: { type: 'arrowclosed' as MarkerType, width: 16, height: 16 },
     style: {
       stroke: relation.direction === 'upstream' ? '#8f7cf6' : '#2a9d8f',
       strokeWidth: 1.8,
     },
     data: { direction: relation.direction },
-  }))
-
-  return {
-    nodes,
-    edges,
-    assets,
-    relations,
   }
 }
 
@@ -189,3 +307,201 @@ export function getConnectedIds(
   })
   return connected
 }
+
+/** Pick a sensible default anchor: the most-connected Power BI table. */
+export function pickDefaultFocus(assets: Map<string, AssetRecord>): string | null {
+  let best: AssetRecord | null = null
+  let bestScore = -1
+  assets.forEach((asset) => {
+    const degree = asset.upstreamIds.length + asset.downstreamIds.length
+    // Power BI tables are the natural centre of a lineage map.
+    const score = degree + (asset.type === 'powerbi' ? 1000 : 0)
+    if (score > bestScore) {
+      bestScore = score
+      best = asset
+    }
+  })
+  return best ? (best as AssetRecord).id : null
+}
+
+// ── Focused, anchored layout with "show 3 + Show more" grouping ──────────────
+
+const FOCUS_BATCH = 3
+const MAX_DEPTH = 2
+const COLUMN_PITCH = 372
+const ROW_GAP = 104
+
+interface PlacedItem {
+  level: number
+  node: FlowNode
+}
+
+/**
+ * Build a React Flow layout centred on `focusId`.
+ *
+ * @param expansions map of groupKey → how many siblings to reveal (defaults to
+ *                   FOCUS_BATCH). Each "Show more" click bumps this by a batch.
+ */
+export function buildFocusedView(
+  focusId: string,
+  assets: Map<string, AssetRecord>,
+  relations: Relation[],
+  expansions: Record<string, number> = {},
+  selectedId: string | null = null,
+): {
+  nodes: FlowNode[]
+  edges: Edge[]
+  visibleAssetIds: Set<string>
+  upstreamCount: number
+  downstreamCount: number
+} {
+  const focus = assets.get(focusId)
+  const empty = {
+    nodes: [] as FlowNode[],
+    edges: [] as Edge[],
+    visibleAssetIds: new Set<string>(),
+    upstreamCount: 0,
+    downstreamCount: 0,
+  }
+  if (!focus) return empty
+
+  const outgoing = new Map<string, string[]>()
+  const incoming = new Map<string, string[]>()
+  relations.forEach(({ source, target }) => {
+    if (!outgoing.has(source)) outgoing.set(source, [])
+    if (!incoming.has(target)) incoming.set(target, [])
+    outgoing.get(source)!.push(target)
+    incoming.get(target)!.push(source)
+  })
+
+  const placed = new Set<string>([focusId])
+  const items: PlacedItem[] = []
+  const visibleAssetIds = new Set<string>([focusId])
+  let upstreamCount = 0
+  let downstreamCount = 0
+
+  const makeAssetNode = (id: string): FlowNode | null => {
+    const asset = assets.get(id)
+    if (!asset) return null
+    return {
+      id,
+      type: 'asset',
+      position: { x: 0, y: 0 },
+      data: {
+        asset,
+        isSelected: id === selectedId,
+        isDimmed: false,
+        isFocus: id === focusId,
+      },
+    }
+  }
+
+  /** Walk one side (upstream = incoming edges, downstream = outgoing). */
+  const walk = (side: 'upstream' | 'downstream') => {
+    const neighbours = side === 'upstream' ? incoming : outgoing
+    let parents = [focusId]
+    for (let depth = 1; depth <= MAX_DEPTH; depth += 1) {
+      const level = side === 'upstream' ? -depth : depth
+      const nextParents: string[] = []
+
+      for (const parentId of parents) {
+        const children = (neighbours.get(parentId) ?? []).filter(
+          (id) => !placed.has(id),
+        )
+        if (!children.length) continue
+
+        const groupKey = `${side}:${level}:${parentId}`
+        const visible = Math.max(
+          FOCUS_BATCH,
+          expansions[groupKey] ?? FOCUS_BATCH,
+        )
+        const shown = children.slice(0, visible)
+        const hidden = children.length - shown.length
+
+        shown.forEach((childId) => {
+          placed.add(childId)
+          visibleAssetIds.add(childId)
+          if (side === 'upstream') upstreamCount += 1
+          else downstreamCount += 1
+          const node = makeAssetNode(childId)
+          if (node) {
+            items.push({ level, node })
+            nextParents.push(childId)
+          }
+        })
+
+        if (hidden > 0) {
+          items.push({
+            level,
+            node: {
+              id: `more-${groupKey}`,
+              type: 'expander',
+              position: { x: 0, y: 0 },
+              data: {
+                kind: 'expander',
+                groupKey,
+                parentName: assets.get(parentId)?.name ?? '',
+                hiddenCount: hidden,
+                side,
+              },
+            },
+          })
+        }
+      }
+
+      parents = nextParents
+      if (!parents.length) break
+    }
+  }
+
+  walk('upstream')
+  walk('downstream')
+
+  // Focus node sits dead centre.
+  items.push({ level: 0, node: makeAssetNode(focusId)! })
+
+  // Lay out each level as a vertically centred column.
+  const byLevel = new Map<number, PlacedItem[]>()
+  items.forEach((item) => {
+    if (!byLevel.has(item.level)) byLevel.set(item.level, [])
+    byLevel.get(item.level)!.push(item)
+  })
+  byLevel.forEach((levelItems, level) => {
+    const startY = -((levelItems.length - 1) * ROW_GAP) / 2
+    levelItems.forEach((item, index) => {
+      item.node.position = {
+        x: level * COLUMN_PITCH,
+        y: startY + index * ROW_GAP,
+      }
+    })
+  })
+
+  const nodes = items.map((item) => item.node)
+
+  // Draw every relation whose endpoints are both currently visible.
+  const edges: Edge[] = []
+  const seenEdges = new Set<string>()
+  relations.forEach((relation, index) => {
+    if (
+      !visibleAssetIds.has(relation.source) ||
+      !visibleAssetIds.has(relation.target)
+    ) {
+      return
+    }
+    const key = `${relation.source}->${relation.target}`
+    if (seenEdges.has(key)) return
+    seenEdges.add(key)
+    const edge = makeEdge(relation, index)
+    const touchesFocus =
+      relation.source === focusId || relation.target === focusId
+    edge.style = {
+      ...edge.style,
+      strokeWidth: touchesFocus ? 2.6 : 1.8,
+    }
+    edges.push(edge)
+  })
+
+  return { nodes, edges, visibleAssetIds, upstreamCount, downstreamCount }
+}
+
+export { ASSET_COLORS }
