@@ -1,0 +1,517 @@
+/* Styles for the project workspace layer: metric modal, metric workspace,
+   metric table columns, lineage metric details, and toasts. */
+
+/* ── Metric modal ───────────────────────────────────────────────────────── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(18, 16, 24, 0.46);
+  backdrop-filter: blur(5px);
+}
+
+.modal-card {
+  width: min(460px, 100%);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  box-shadow: 0 30px 70px rgba(22, 18, 36, 0.28);
+  overflow: hidden;
+}
+
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid #f0eef3;
+}
+
+.modal-icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: #c2417f;
+  background: #fdeef5;
+  border: 1px solid #f8d8e7;
+  border-radius: 10px;
+}
+
+.modal-head h2 {
+  margin: 0;
+  color: var(--ink);
+  font: 700 16px 'Manrope', sans-serif;
+}
+
+.modal-head p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.modal-close {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: #777480;
+  background: #f4f3f6;
+  border-radius: 6px;
+}
+
+.modal-body {
+  display: grid;
+  gap: 14px;
+  padding: 18px 20px 20px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.field > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #5b5864;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.field > span i {
+  color: #df675b;
+  font-style: normal;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  padding: 9px 11px;
+  color: var(--ink);
+  background: #f8f7fa;
+  border: 1px solid #e6e3eb;
+  border-radius: 8px;
+  outline: none;
+  font-size: 12px;
+  font-family: inherit;
+  transition: 140ms ease;
+  resize: vertical;
+}
+
+.field input:focus,
+.field textarea:focus {
+  background: #fff;
+  border-color: #b9aef2;
+  box-shadow: 0 0 0 3px rgba(101, 87, 220, 0.12);
+}
+
+.field.invalid input {
+  border-color: #e8a59e;
+  background: #fffafa;
+}
+
+.field em {
+  color: #b3473e;
+  font-size: 10px;
+  font-style: normal;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 4px;
+}
+
+/* ── Metric workspace ───────────────────────────────────────────────────── */
+
+.metric-workspace {
+  display: grid;
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.metric-card-hero {
+  display: flex;
+  align-items: flex-start;
+  gap: 15px;
+  padding: 20px;
+  background: linear-gradient(135deg, #fff 64%, #fdf3f8 100%);
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  box-shadow: 0 8px 28px rgba(36, 31, 52, 0.05);
+}
+
+.metric-hero-icon {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: #c2417f;
+  background: #fdeef5;
+  border: 1px solid #f8d8e7;
+  border-radius: 12px;
+}
+
+.metric-hero-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.metric-hero-copy h2 {
+  margin: 0;
+  color: var(--ink);
+  font: 700 19px 'Manrope', sans-serif;
+}
+
+.metric-hero-copy h2 a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.metric-hero-copy h2 a:hover {
+  color: #c2417f;
+}
+
+.metric-hero-copy h2 a svg {
+  color: #b3b0ba;
+}
+
+.metric-hero-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 9px;
+}
+
+.measure-chip,
+.atlan-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.measure-chip {
+  color: #9d3268;
+  background: #fdeef5;
+  border: 1px solid #f4d3e3;
+}
+
+.atlan-chip {
+  color: #4953b8;
+  background: #eef0ff;
+  border: 1px solid #dde0fb;
+  text-decoration: none;
+}
+
+.atlan-chip:hover {
+  border-color: #b9bdf3;
+}
+
+.metric-hero-copy p {
+  max-width: 560px;
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.metric-hero-actions {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.ghost-button.danger {
+  color: #b3473e;
+}
+
+.ghost-button.danger:hover {
+  background: #fff4f3;
+  border-color: #eec4c0;
+}
+
+.connect-card {
+  padding: 20px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  box-shadow: 0 8px 28px rgba(36, 31, 52, 0.05);
+}
+
+.section-sub {
+  max-width: 560px;
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(265px, 1fr));
+  gap: 10px;
+  margin-top: 17px;
+}
+
+.sheet-tile {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 13px;
+  background: #fbfafd;
+  border: 1px solid #e8e5ee;
+  border-radius: 10px;
+  text-align: left;
+  transition: 150ms ease;
+}
+
+.sheet-tile:hover {
+  border-color: #cdc6e0;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(36, 31, 52, 0.07);
+}
+
+.sheet-tile.connected {
+  background: #fdf5f9;
+  border-color: #eeb9d3;
+  box-shadow: 0 0 0 3px rgba(194, 65, 127, 0.07);
+}
+
+.sheet-tile.missing {
+  background: #fffaf3;
+  border-color: #efdcba;
+}
+
+.sheet-tile-check {
+  width: 17px;
+  height: 17px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: #fff;
+  background: #fff;
+  border: 1px solid #cfcbd6;
+  border-radius: 5px;
+  transition: 140ms ease;
+}
+
+.sheet-tile.connected .sheet-tile-check {
+  background: #c2417f;
+  border-color: #c2417f;
+}
+
+.sheet-tile-check.missing-mark {
+  color: #b07b16;
+  background: #fdf2da;
+  border-color: #ecd9a8;
+}
+
+.sheet-tile-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: #287b54;
+  background: #e5f3eb;
+  border-radius: 8px;
+}
+
+.sheet-tile.missing .sheet-tile-icon {
+  color: #b07b16;
+  background: #fdf2da;
+}
+
+.sheet-tile-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.sheet-tile-copy strong,
+.sheet-tile-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet-tile-copy strong {
+  color: #36333d;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.sheet-tile-copy small {
+  margin-top: 3px;
+  color: #8a8792;
+  font-size: 9.5px;
+}
+
+.sheet-tile-copy small svg {
+  vertical-align: -1px;
+}
+
+.connect-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+  padding: 38px 20px;
+  color: #8a8792;
+  background: #fbfafd;
+  border: 1px dashed #d7d2e0;
+  border-radius: 11px;
+  text-align: center;
+}
+
+.connect-empty svg {
+  color: #a89fd9;
+}
+
+.connect-empty strong {
+  color: #4b4853;
+  font-size: 12.5px;
+}
+
+.connect-empty span {
+  max-width: 380px;
+  font-size: 10.5px;
+  line-height: 1.55;
+}
+
+.connect-empty button {
+  margin-top: 10px;
+}
+
+.connect-hint {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 14px;
+  padding: 11px 13px;
+  color: #6656d2;
+  background: #f4f2ff;
+  border: 1px solid #e2ddfb;
+  border-radius: 9px;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.metric-missing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  margin-top: 40px;
+  padding: 60px 20px;
+  color: #8a8792;
+  background: #fff;
+  border: 1px dashed #d7d2e0;
+  border-radius: 13px;
+  text-align: center;
+}
+
+.metric-missing svg {
+  color: #c2417f;
+}
+
+.metric-missing strong {
+  color: #4b4853;
+  font-size: 13px;
+}
+
+.metric-missing span {
+  max-width: 380px;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+/* ── Metric columns in Processed Data ───────────────────────────────────── */
+
+.metric-cell {
+  display: inline-flex;
+  padding: 3px 8px;
+  color: #9d3268;
+  background: #fdeef5;
+  border-radius: 5px;
+  font-size: 9.5px;
+  font-weight: 700;
+}
+
+.metric-icon.pink {
+  color: #c2417f;
+  background: #fdeef5;
+}
+
+/* ── Metric details in lineage panel ────────────────────────────────────── */
+
+.metadata-grid.single {
+  grid-template-columns: 1fr;
+}
+
+.metadata-grid dd.wrap {
+  white-space: normal;
+  line-height: 1.5;
+}
+
+.atlan-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #4953b8;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.atlan-link:hover {
+  text-decoration: underline;
+}
+
+/* ── Toast ──────────────────────────────────────────────────────────────── */
+
+.toast {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  color: #fff;
+  background: #201f27;
+  border: 1px solid #34333c;
+  border-radius: 10px;
+  box-shadow: 0 14px 34px rgba(22, 18, 36, 0.3);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.toast svg {
+  color: #5cc995;
+}

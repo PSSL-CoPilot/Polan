@@ -20,6 +20,7 @@ export type AssetType =
   | 'powerbi'
   | 'dataset'
   | 'report'
+  | 'metric'
   | 'unknown'
 
 export type CellValue = string | number | boolean | null | undefined
@@ -69,6 +70,32 @@ export interface AssetRecord {
   tableName: string
   mdrAvailability: boolean
   layer: Layer
+  /** Present only on metric nodes injected from the project workspace. */
+  metric?: MetricRecord
+}
+
+export interface MetricRecord {
+  id: string
+  name: string
+  measureName: string
+  atlanLink?: string
+  description?: string
+  /** Workbook sheet names — each sheet represents one Power BI table. */
+  connectedSheets: string[]
+}
+
+export interface ViewRecord {
+  id: string
+  name: string
+  isExpanded: boolean
+  metrics: MetricRecord[]
+}
+
+export interface ProjectState {
+  name: string
+  views: ViewRecord[]
+  selectedViewId: string | null
+  selectedMetricId: string | null
 }
 
 export interface Relation {
@@ -77,4 +104,4 @@ export interface Relation {
   direction: string
 }
 
-export type AppView = 'upload' | 'preview' | 'lineage' | 'processed'
+export type AppView = 'upload' | 'preview' | 'lineage' | 'processed' | 'metric'

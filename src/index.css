@@ -108,6 +108,14 @@ select:focus-visible {
   text-transform: uppercase;
 }
 
+.brand .brand-byline {
+  color: #6f6d7a;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.35px;
+  text-transform: none;
+}
+
 .sidebar-label {
   padding: 0 12px 10px;
   color: #74727e;
@@ -180,44 +188,202 @@ select:focus-visible {
   color: #a8a5b0;
 }
 
-.sidebar-spacer {
+/* ── Project Explorer ───────────────────────────────────────────────────── */
+
+.project-explorer {
   flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid #26252d;
 }
 
-.sidebar-callout {
-  margin: 12px 2px 16px;
-  padding: 15px;
-  color: #c9c6d2;
-  background: #202027;
+.explorer-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.explorer-label button {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  color: #8f8d99;
+  background: #232229;
   border: 1px solid #2e2d35;
-  border-radius: 12px;
+  border-radius: 5px;
+  transition: 140ms ease;
 }
 
-.sidebar-callout svg {
+.explorer-label button:hover {
+  color: #fff;
+  background: #2c2b33;
+}
+
+.tree-views {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 8px;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  color: #9b99a4;
+  transition: 140ms ease;
+}
+
+.tree-row:hover {
+  background: #202027;
+}
+
+.tree-row .tree-label {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  font-size: 11.5px;
+  font-weight: 500;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-row {
+  margin: 2px 0 4px;
+  color: #d6d4dc;
+}
+
+.project-row svg {
+  flex: 0 0 auto;
   color: #958af2;
 }
 
-.sidebar-callout strong {
-  display: block;
-  margin-top: 8px;
+.project-row .tree-label {
+  font-weight: 600;
+}
+
+.tree-chevron {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: #6f6d78;
+  background: transparent;
+  border-radius: 4px;
+}
+
+.tree-chevron:hover {
+  color: #d6d4dc;
+}
+
+.view-row .tree-label small {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  color: #74727e;
+  background: #232229;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.tree-actions {
+  display: none;
+  align-items: center;
+  gap: 2px;
+}
+
+.tree-row:hover .tree-actions {
+  display: flex;
+}
+
+.tree-actions button {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  color: #84828d;
+  background: transparent;
+  border-radius: 4px;
+}
+
+.tree-actions button:hover {
   color: #fff;
-  font-size: 12px;
+  background: #2c2b33;
 }
 
-.sidebar-callout p {
-  margin: 6px 0 0;
-  color: #888691;
-  font-size: 10.5px;
-  line-height: 1.5;
+.tree-actions button.danger:hover {
+  color: #ff8d83;
+  background: rgba(225, 105, 93, 0.14);
 }
 
-.collapse-button {
+.tree-metrics {
+  margin: 1px 0 5px;
+  padding-left: 17px;
+}
+
+.metric-row {
+  min-height: 27px;
+}
+
+.metric-row svg {
+  flex: 0 0 auto;
+  color: #c2417f;
+}
+
+.metric-row.active {
+  color: #fff;
+  background: #292830;
+  box-shadow: inset 2px 0 #c2417f;
+}
+
+.metric-row .tree-label {
+  font-size: 11px;
+}
+
+.tree-empty {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 10px 11px;
-  color: #777580;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  color: #74727e;
   background: transparent;
+  border: 1px dashed #34333c;
+  border-radius: 7px;
+  font-size: 10px;
+  transition: 140ms ease;
+}
+
+.tree-empty:hover {
+  color: #b7aef7;
+  border-color: #4a4760;
+}
+
+.tree-rename {
+  min-width: 0;
+  flex: 1;
+  padding: 3px 6px;
+  color: #fff;
+  background: #15151a;
+  border: 1px solid #4a4760;
+  border-radius: 5px;
+  outline: none;
   font-size: 11px;
 }
 
@@ -566,6 +732,15 @@ main,
 .dropzone .upload-icon {
   position: relative;
   z-index: 2;
+}
+
+/* Let clicks on the decorative copy fall through to the file input overlay —
+   only the button stays interactive (it forwards to the input itself). */
+.dropzone .file-rules,
+.dropzone h2,
+.dropzone p,
+.dropzone .upload-icon {
+  pointer-events: none;
 }
 
 .upload-icon {

@@ -3,16 +3,26 @@ import {
   Database,
   FileSpreadsheet,
   GitBranch,
-  PanelLeftClose,
-  Sparkles,
   TableProperties,
 } from 'lucide-react'
-import type { AppView } from '../types'
+import type { AppView, ProjectState } from '../types'
+import { ProjectExplorer } from './ProjectExplorer'
 
 interface SidebarProps {
   activeView: AppView
   hasWorkbook: boolean
   onChange: (view: AppView) => void
+  project: ProjectState
+  activeMetricId: string | null
+  onRenameProject: (name: string) => void
+  onAddView: () => void
+  onRenameView: (viewId: string, name: string) => void
+  onDeleteView: (viewId: string) => void
+  onToggleView: (viewId: string) => void
+  onSelectMetric: (metricId: string) => void
+  onRenameMetric: (metricId: string, name: string) => void
+  onDeleteMetric: (metricId: string) => void
+  onCreateMetric: (viewId: string) => void
 }
 
 const items: Array<{
@@ -47,7 +57,14 @@ const items: Array<{
   },
 ]
 
-export function Sidebar({ activeView, hasWorkbook, onChange }: SidebarProps) {
+export function Sidebar({
+  activeView,
+  hasWorkbook,
+  onChange,
+  project,
+  activeMetricId,
+  ...explorerActions
+}: SidebarProps) {
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -55,8 +72,8 @@ export function Sidebar({ activeView, hasWorkbook, onChange }: SidebarProps) {
           <ArrowUpDown size={18} strokeWidth={2.4} />
         </div>
         <div>
-          <strong>:Polan</strong>
-          <span>Lineage Studio</span>
+          <strong>Polan</strong>
+          <span className="brand-byline">by Polestar Analytics</span>
         </div>
       </div>
 
@@ -83,16 +100,11 @@ export function Sidebar({ activeView, hasWorkbook, onChange }: SidebarProps) {
         })}
       </nav>
 
-      <div className="sidebar-spacer" />
-      <div className="sidebar-callout">
-        <Sparkles size={17} />
-        <strong>Smart enrichment</strong>
-        <p>Projects, layers, and MDR coverage are derived automatically.</p>
-      </div>
-      <button className="collapse-button" type="button" aria-label="Collapse menu">
-        <PanelLeftClose size={17} />
-        Collapse menu
-      </button>
+      <ProjectExplorer
+        activeMetricId={activeView === 'metric' ? activeMetricId : null}
+        project={project}
+        {...explorerActions}
+      />
     </aside>
   )
 }

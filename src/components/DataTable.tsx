@@ -12,16 +12,18 @@ import {
 import { useMemo, useState } from 'react'
 import type { ProcessedRow, SheetData } from '../types'
 import {
-  exportRows,
-  getTableColumns,
-  processedRowToRecord,
-} from '../utils/workbook'
+  metricValueForRow,
+  type MetricTableContext,
+} from '../utils/metricData'
+import { exportRows, getTableColumns } from '../utils/workbook'
 
 interface DataTableProps {
   sheets: SheetData[]
   includeDerived: boolean
   selectedSheet: string
   onSheetChange: (sheet: string) => void
+  /** Active-metric enrichment: prepends Report/Dataset/Metric columns. */
+  metricContext?: MetricTableContext | null
 }
 
 const PAGE_SIZE = 8
@@ -40,6 +42,7 @@ export function DataTable({
   includeDerived,
   selectedSheet,
   onSheetChange,
+  metricContext = null,
 }: DataTableProps) {
   const [search, setSearch] = useState('')
   const [layer, setLayer] = useState('All layers')
@@ -51,8 +54,31 @@ export function DataTable({
     selectedSheet === 'all'
       ? sheets.filter((sheet) => !sheet.errors.length)
       : sheets.filter((sheet) => sheet.name === selectedSheet)
-  const columns = getTableColumns(selectedSheets, includeDerived)
-  const rows = selectedSheets.flatMap((sheet) => sheet.rows)
+  const metricColumns = metricContext?.columns ?? []
+  const columns = [
+    ...metricColumns,
+    ...getTableColumns(selectedSheets, includeDerived),
+  ]
+  const rows = useMemo(() => {
+    const flat = selectedSheets.flatMap((sheet) => sheet.rows)
+    if (!metricContext) return flat
+    // Active metric: related rows first, grouped table by table in the order
+    // the tables were connected; everything else keeps its original order.
+    const sheetRank = new Map(
+      metricContext.connectedSheets.map((name, index) => [name, index]),
+    )
+    const related = flat.filter((row) => metricContext.byRowId.has(row.id))
+    const others = flat.filter((row) => !metricContext.byRowId.has(row.id))
+    related.sort(
+      (a, b) => (sheetRank.get(a.sheet) ?? 0) - (sheetRank.get(b.sheet) ?? 0),
+    )
+    return [...related, ...others]
+  }, [selectedSheets, metricContext])
+
+  const getValue = (row: ProcessedRow, column: string) =>
+    metricColumns.includes(column)
+      ? metricValueForRow(metricContext, row.id, column)
+      : valueForColumn(row, column)
 
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -60,7 +86,7 @@ export function DataTable({
       const matchesSearch =
         !query ||
         columns.some((column) =>
-          String(valueForColumn(row, column)).toLowerCase().includes(query),
+          String(getValue(row, column)).toLowerCase().includes(query),
         )
       const matchesLayer =
         !includeDerived || layer === 'All layers' || row.layer === layer
@@ -69,15 +95,15 @@ export function DataTable({
 
     if (!sort) return filtered
     return [...filtered].sort((a, b) => {
-      const aValue = String(valueForColumn(a, sort.column))
-      const bValue = String(valueForColumn(b, sort.column))
+      const aValue = String(getValue(a, sort.column))
+      const bValue = String(getValue(b, sort.column))
       const result = aValue.localeCompare(bValue, undefined, {
         numeric: true,
         sensitivity: 'base',
       })
       return sort.ascending ? result : -result
     })
-  }, [columns, includeDerived, layer, rows, search, sort])
+  }, [columns, includeDerived, layer, rows, search, sort, metricContext])
 
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE))
   const currentPage = Math.min(page, pageCount)
@@ -85,6 +111,21 @@ export function DataTable({
     (currentPage - 1) * PAGE_SIZE,
     currentPage * PAGE_SIZE,
   )
+
+  const exportExtras = metricContext
+    ? {
+        columns: metricColumns,
+        valueFor: (row: ProcessedRow) => {
+          const values: Record<string, string> = {}
+          metricColumns.forEach((column) => {
+            values[column] = String(
+              metricValueForRow(metricContext, row.id, column),
+            )
+          })
+          return values
+        },
+      }
+    : undefined
 
   const toggleSort = (column: string) => {
     setPage(1)
@@ -96,6 +137,12 @@ export function DataTable({
   }
 
   const renderCell = (row: ProcessedRow, column: string) => {
+    if (metricColumns.includes(column)) {
+      const value = String(metricValueForRow(metricContext, row.id, column))
+      if (!value) return <span className="metric-cell-empty" />
+      const highlight = column === 'Metric Name' || column === 'Measure Name'
+      return highlight ? <span className="metric-cell">{value}</span> : value
+    }
     const value = valueForColumn(row, column)
     if (column === 'MDR Availability') {
       return (
@@ -170,7 +217,7 @@ export function DataTable({
             <div className="export-menu">
               <button
                 className="ghost-button"
-                onClick={() => exportRows(filteredRows, columns, 'csv')}
+                onClick={() => exportRows(filteredRows, columns, 'csv', exportExtras)}
                 type="button"
               >
                 <Download size={15} />
@@ -178,7 +225,7 @@ export function DataTable({
               </button>
               <button
                 className="primary-button compact"
-                onClick={() => exportRows(filteredRows, columns, 'xlsx')}
+                onClick={() => exportRows(filteredRows, columns, 'xlsx', exportExtras)}
                 type="button"
               >
                 <Download size={15} />
@@ -211,22 +258,19 @@ export function DataTable({
             </tr>
           </thead>
           <tbody>
-            {pageRows.map((row, index) => {
-              const record = processedRowToRecord(row, columns)
-              return (
-                <tr key={row.id}>
-                  <td className="row-number">
-                    {(currentPage - 1) * PAGE_SIZE + index + 1}
+            {pageRows.map((row, index) => (
+              <tr key={row.id}>
+                <td className="row-number">
+                  {(currentPage - 1) * PAGE_SIZE + index + 1}
+                </td>
+                {selectedSheet === 'all' && <td className="sheet-cell">{row.sheet}</td>}
+                {columns.map((column) => (
+                  <td key={column} title={String(getValue(row, column) ?? '')}>
+                    {renderCell(row, column)}
                   </td>
-                  {selectedSheet === 'all' && <td className="sheet-cell">{row.sheet}</td>}
-                  {columns.map((column) => (
-                    <td key={column} title={String(record[column] ?? '')}>
-                      {renderCell(row, column)}
-                    </td>
-                  ))}
-                </tr>
-              )
-            })}
+                ))}
+              </tr>
+            ))}
           </tbody>
         </table>
         {!pageRows.length && (

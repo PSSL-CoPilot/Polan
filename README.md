@@ -1,4 +1,6 @@
-# :Polan Lineage Studio
+# Polan — Lineage Studio
+
+by Polestar Analytics
 
 A browser-based React application that turns Excel workbooks into enriched
 lineage tables and interactive upstream/downstream asset graphs.

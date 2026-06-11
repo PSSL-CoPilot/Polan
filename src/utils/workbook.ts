@@ -215,14 +215,21 @@ export async function exportRows(
   rows: ProcessedRow[],
   columns: string[],
   format: 'xlsx' | 'csv',
+  extras?: {
+    columns: string[]
+    valueFor: (row: ProcessedRow) => Record<string, CellValue>
+  },
 ) {
   const XLSX = await import('xlsx')
-  const records = rows.map((row) => {
-    const originalColumns = columns.filter(
-      (column) => !(DERIVED_COLUMNS as readonly string[]).includes(column),
-    )
-    return processedRowToRecord(row, originalColumns)
-  })
+  const originalColumns = columns.filter(
+    (column) =>
+      !(DERIVED_COLUMNS as readonly string[]).includes(column) &&
+      !extras?.columns.includes(column),
+  )
+  const records = rows.map((row) => ({
+    ...(extras ? extras.valueFor(row) : {}),
+    ...processedRowToRecord(row, originalColumns),
+  }))
   const sheet = XLSX.utils.json_to_sheet(records, { header: columns })
 
   if (format === 'xlsx') {

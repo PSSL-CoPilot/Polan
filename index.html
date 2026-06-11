@@ -6,12 +6,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content=":Polan turns Excel workbooks into governed, interactive data lineage maps."
+      content="Polan by Polestar Analytics turns Excel workbooks into governed, interactive data lineage maps."
     />
-    <title>:Polan Lineage Studio</title>
+    <title>Polan — Lineage Studio</title>
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Hidden tabs and embedded previews throttle requestAnimationFrame to
+      // zero, which leaves animation-driven UI (exit transitions, toasts)
+      // permanently stuck. When the page loads hidden, drive rAF with timers
+      // so the app stays fully interactive.
+      if (document.hidden) {
+        window.requestAnimationFrame = function (cb) {
+          return window.setTimeout(function () { cb(performance.now()) }, 16)
+        }
+        window.cancelAnimationFrame = function (id) { window.clearTimeout(id) }
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -2,6 +2,7 @@ import type { Edge, MarkerType, Node } from '@xyflow/react'
 import type {
   AssetRecord,
   AssetType,
+  MetricRecord,
   ProcessedRow,
   Relation,
 } from '../types'
@@ -83,6 +84,7 @@ const typePriority: Record<AssetType, number> = {
   powerbi: 2,
   dataset: 3,
   report: 4,
+  metric: 5,
 }
 
 function chooseType(current: AssetType, next: AssetType) {
@@ -111,6 +113,7 @@ const ASSET_COLORS: Record<AssetType, string> = {
   powerbi: '#e5a82d',
   dataset: '#26968a',
   report: '#e1695d',
+  metric: '#c2417f',
   unknown: '#75808f',
 }
 
@@ -170,7 +173,95 @@ function chainDatasetsToReports(
   return next
 }
 
-export function buildLineage(rows: ProcessedRow[]) {
+/**
+ * Inject project metrics into the relation set as first-class nodes:
+ *
+ *   BigQuery / source tables → Metric → Power BI table → Dataset → Report
+ *
+ * Each metric is connected to the Power BI tables found in its connected
+ * workbook sheets. Existing upstream edges into those tables are rerouted
+ * through the metric; everything else is untouched.
+ */
+function insertMetricNodes(
+  rows: ProcessedRow[],
+  metrics: MetricRecord[],
+  assets: Map<string, AssetRecord>,
+  relations: Relation[],
+): Relation[] {
+  if (!metrics.length) return relations
+
+  // sheet name → Power BI table asset ids seen in that sheet.
+  const sheetTables = new Map<string, Set<string>>()
+  rows.forEach((row) => {
+    if (!row.sourceAsset) return
+    const id = nodeId(row.sourceAsset)
+    if (!assets.has(id)) return
+    if (!sheetTables.has(row.sheet)) sheetTables.set(row.sheet, new Set())
+    sheetTables.get(row.sheet)!.add(id)
+  })
+
+  // table id → metric node ids attached to it.
+  const metricsByTable = new Map<string, string[]>()
+  metrics.forEach((metric) => {
+    const tableIds = new Set<string>()
+    metric.connectedSheets.forEach((sheet) => {
+      sheetTables.get(sheet)?.forEach((id) => tableIds.add(id))
+    })
+    if (!tableIds.size) return
+
+    const metricId = `metric-${nodeId(metric.id) || metric.id}`
+    assets.set(metricId, {
+      ...emptyAsset(metric.name, 'metric'),
+      id: metricId,
+      metric,
+    })
+    tableIds.forEach((tableId) => {
+      const bucket = metricsByTable.get(tableId) ?? []
+      bucket.push(metricId)
+      metricsByTable.set(tableId, bucket)
+    })
+  })
+
+  if (!metricsByTable.size) return relations
+
+  const next: Relation[] = []
+  const seen = new Set<string>()
+  const push = (relation: Relation) => {
+    const key = `${relation.source}->${relation.target}`
+    if (seen.has(key) || relation.source === relation.target) return
+    seen.add(key)
+    next.push(relation)
+  }
+
+  relations.forEach((relation) => {
+    const tableMetrics =
+      relation.direction === 'upstream'
+        ? metricsByTable.get(relation.target)
+        : undefined
+    if (tableMetrics?.length) {
+      // Source table fed a Power BI table directly — route through metrics.
+      tableMetrics.forEach((metricId) =>
+        push({ source: relation.source, target: metricId, direction: 'upstream' }),
+      )
+      return
+    }
+    push(relation)
+  })
+
+  // Metric → Power BI table (even when the table had no upstream sources).
+  metricsByTable.forEach((metricIds, tableId) => {
+    metricIds.forEach((metricId) =>
+      push({ source: metricId, target: tableId, direction: 'upstream' }),
+    )
+  })
+
+  return next
+}
+
+export function buildLineage(
+  rows: ProcessedRow[],
+  metrics: MetricRecord[] = [],
+) {
   const assets = new Map<string, AssetRecord>()
   const relationKeys = new Set<string>()
   let relations: Relation[] = []
@@ -225,9 +316,11 @@ export function buildLineage(rows: ProcessedRow[]) {
     }
   })
 
-  // Promote Power BI → Dataset → Report chains, then derive the adjacency
-  // lists from the final relation set so the details panel stays accurate.
+  // Promote Power BI → Dataset → Report chains and inject metric nodes, then
+  // derive the adjacency lists from the final relation set so the details
+  // panel stays accurate.
   relations = chainDatasetsToReports(relations, assets)
+  relations = insertMetricNodes(rows, metrics, assets, relations)
   relations.forEach((relation) => {
     const from = assets.get(relation.source)
     const to = assets.get(relation.target)
@@ -239,6 +332,7 @@ export function buildLineage(rows: ProcessedRow[]) {
   // Lightweight column layout retained for the overview / unit tests.
   const columns: AssetType[] = [
     'bigquery',
+    'metric',
     'powerbi',
     'dataset',
     'report',
@@ -246,6 +340,7 @@ export function buildLineage(rows: ProcessedRow[]) {
   ]
   const columnX: Record<AssetType, number> = {
     bigquery: 40,
+    metric: 200,
     powerbi: 355,
     dataset: 670,
     report: 985,

@@ -19,14 +19,21 @@ import {
   ExternalLink,
   FileBarChart2,
   Layers3,
+  Link2,
   PanelRightClose,
   Plus,
   Search,
+  Sigma,
   Table2,
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import type { AssetRecord, AssetType, ProcessedRow } from '../types'
+import type {
+  AssetRecord,
+  AssetType,
+  MetricRecord,
+  ProcessedRow,
+} from '../types'
 import {
   ASSET_COLORS,
   buildFocusedView,
@@ -39,6 +46,7 @@ import {
 
 interface LineageGraphProps {
   rows: ProcessedRow[]
+  metrics?: MetricRecord[]
 }
 
 const assetConfig: Record<
@@ -49,6 +57,7 @@ const assetConfig: Record<
   powerbi: { label: 'Power BI table', color: ASSET_COLORS.powerbi, icon: Table2 },
   dataset: { label: 'Dataset', color: ASSET_COLORS.dataset, icon: Layers3 },
   report: { label: 'Report', color: ASSET_COLORS.report, icon: FileBarChart2 },
+  metric: { label: 'Metric', color: ASSET_COLORS.metric, icon: Sigma },
   unknown: { label: 'Unknown asset', color: ASSET_COLORS.unknown, icon: Database },
 }
 
@@ -169,6 +178,24 @@ function DetailsPanel({
     .map((id) => assets.get(id))
     .filter((value): value is AssetRecord => Boolean(value))
 
+  // For metric nodes: direct downstream is the Power BI tables; surface the
+  // datasets/reports that live further down the chain too.
+  const transitiveDownstream = useMemo(() => {
+    if (asset.type !== 'metric') return []
+    const found: AssetRecord[] = []
+    const seen = new Set<string>([asset.id])
+    const visit = (id: string, depth: number) => {
+      if (seen.has(id) || depth > 4) return
+      seen.add(id)
+      const item = assets.get(id)
+      if (!item) return
+      if (item.type === 'dataset' || item.type === 'report') found.push(item)
+      item.downstreamIds.forEach((next) => visit(next, depth + 1))
+    }
+    asset.downstreamIds.forEach((id) => visit(id, 1))
+    return found
+  }, [asset, assets])
+
   return (
     <aside className="details-panel">
       <div className="details-top">
@@ -200,6 +227,61 @@ function DetailsPanel({
         {isFocus ? 'Centred in graph' : 'Center lineage on this asset'}
       </button>
 
+      {asset.type === 'metric' && asset.metric && (
+        <div className="details-section">
+          <h4>Metric definition</h4>
+          <dl className="metadata-grid single">
+            <div>
+              <dt>Metric Name</dt>
+              <dd>{asset.metric.name}</dd>
+            </div>
+            <div>
+              <dt>Measure Name</dt>
+              <dd>{asset.metric.measureName}</dd>
+            </div>
+            <div>
+              <dt>Atlan Link</dt>
+              <dd>
+                {asset.metric.atlanLink ? (
+                  <a
+                    className="atlan-link"
+                    href={asset.metric.atlanLink}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    <Link2 size={11} />
+                    Open in Atlan
+                  </a>
+                ) : (
+                  'Not provided'
+                )}
+              </dd>
+            </div>
+            {asset.metric.description && (
+              <div>
+                <dt>Description</dt>
+                <dd className="wrap">{asset.metric.description}</dd>
+              </div>
+            )}
+            <div>
+              <dt>Connected Power BI tables</dt>
+              <dd className="wrap">
+                {downstream.map((item) => item.name).join(', ') || '—'}
+              </dd>
+            </div>
+            {transitiveDownstream.length > 0 && (
+              <div>
+                <dt>Downstream datasets &amp; reports</dt>
+                <dd className="wrap">
+                  {transitiveDownstream.map((item) => item.name).join(', ')}
+                </dd>
+              </div>
+            )}
+          </dl>
+        </div>
+      )}
+
+      {asset.type !== 'metric' && (
       <div className="details-section">
         <h4>Governance</h4>
         <dl className="metadata-grid">
@@ -239,6 +321,7 @@ function DetailsPanel({
           </div>
         </dl>
       </div>
+      )}
 
       <div className="details-section">
         <h4>Relationships</h4>
@@ -257,8 +340,8 @@ function DetailsPanel({
   )
 }
 
-function GraphCanvas({ rows }: LineageGraphProps) {
-  const graph = useMemo(() => buildLineage(rows), [rows])
+function GraphCanvas({ rows, metrics = [] }: LineageGraphProps) {
+  const graph = useMemo(() => buildLineage(rows, metrics), [rows, metrics])
   const { fitView } = useReactFlow()
 
   const sortedAssets = useMemo(

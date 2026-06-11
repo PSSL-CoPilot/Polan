@@ -9,7 +9,7 @@ import {
   ShieldCheck,
   UploadCloud,
 } from 'lucide-react'
-import { useState, type DragEvent } from 'react'
+import { useRef, useState, type DragEvent } from 'react'
 import { REQUIRED_COLUMNS, type WorkbookData } from '../types'
 
 interface UploadWorkspaceProps {
@@ -28,6 +28,7 @@ export function UploadWorkspace({
   onContinue,
 }: UploadWorkspaceProps) {
   const [dragging, setDragging] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const validSheets =
     workbook?.sheets.filter((sheet) => !sheet.errors.length) ?? []
   const rowCount = validSheets.reduce(
@@ -49,7 +50,7 @@ export function UploadWorkspace({
           <span className="eyebrow">Workbook intake</span>
           <h1>Turn spreadsheets into living lineage.</h1>
           <p>
-            Upload one workbook and :Polan will validate every sheet, enrich
+            Upload one workbook and Polan will validate every sheet, enrich
             governance metadata, and map the complete asset journey.
           </p>
         </div>
@@ -78,7 +79,9 @@ export function UploadWorkspace({
             onChange={(event) => {
               const file = event.target.files?.[0]
               if (file) onFile(file)
+              event.target.value = ''
             }}
+            ref={fileInputRef}
             type="file"
           />
           <div className="upload-icon">
@@ -93,7 +96,11 @@ export function UploadWorkspace({
             <span>Multiple sheets supported</span>
             <span>Up to 25 MB</span>
           </div>
-          <button className="secondary-button" type="button">
+          <button
+            className="secondary-button"
+            onClick={() => fileInputRef.current?.click()}
+            type="button"
+          >
             Choose workbook
           </button>
         </motion.div>
