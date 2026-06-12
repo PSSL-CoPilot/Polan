@@ -2,40 +2,28 @@ import {
   BarChart3,
   Database,
   FileBarChart2,
-  Layers,
+  Layers3,
   ShieldCheck,
-  ShieldX,
   TrendingDown,
   TrendingUp,
   Zap,
 } from 'lucide-react'
-import { useMemo } from 'react'
-import type { MetricRecord, ProcessedRow, SheetData, UploadedWorkbook } from '../types'
+import { useMemo, useState } from 'react'
+import type { UploadedWorkbook } from '../types'
 import {
+  ALL_DASHBOARD_SHEETS,
+  ALL_DASHBOARD_WORKBOOKS,
   computeDashboardMetrics,
+  getDashboardRows,
+  getDashboardSheetOptions,
   type DashboardMetrics,
 } from '../utils/dashboardMetrics'
 
 interface DashboardPageProps {
   workbooks: UploadedWorkbook[]
-  activeWorkbookId: string | null
-  onSelectWorkbook: (id: string) => void
-  sheets: SheetData[]
-  selectedSheet: string
-  onSheetChange: (sheet: string) => void
-  rows: ProcessedRow[]
-  metrics?: MetricRecord[]
 }
 
-type KpiAccent =
-  | 'violet'
-  | 'indigo'
-  | 'teal'
-  | 'gold'
-  | 'green'
-  | 'red'
-  | 'pink'
-  | 'cyan'
+type KpiAccent = 'violet' | 'indigo' | 'teal' | 'gold' | 'pink' | 'cyan'
 
 interface KpiCard {
   label: string
@@ -45,314 +33,322 @@ interface KpiCard {
   sub: string
 }
 
-// ── Layer donut chart ─────────────────────────────────────────────────────────
-
-interface DonutSegment {
+interface DonutItem {
   label: string
   value: number
   color: string
-  frac: number
-  len: number
-  dashoffset: number
-  gapLen: number
 }
 
-function LayerDonut({
-  gold,
-  silver,
-  raw,
-  noLayer,
-}: {
-  gold: number
-  silver: number
-  raw: number
-  noLayer: number
-}) {
-  const total = gold + silver + raw + noLayer
-  if (total === 0) return null
+interface DonutChartProps {
+  title: string
+  description: string
+  centerLabel: string
+  icon: React.ReactNode
+  items: DonutItem[]
+}
 
-  const R = 72
-  const SW = 28
-  const CX = 100
-  const CY = 100
-  const C = 2 * Math.PI * R
-
-  const rawData = [
-    { label: 'Gold', value: gold, color: '#d97706' },
-    { label: 'Silver', value: silver, color: '#64748b' },
-    { label: 'Bronze / Raw', value: raw, color: '#b45309' },
-    { label: 'No Layers', value: noLayer, color: '#ddd8f0' },
-  ].filter((d) => d.value > 0)
-
-  let cumulative = 0
-  const segments: DonutSegment[] = rawData.map((d) => {
-    const frac = d.value / total
-    const len = frac * C
-    // C - cumulativeBefore positions the segment start after -90° rotation.
-    const dashoffset = C - cumulative
-    const gapLen = C - len
-    cumulative += len
-    return { ...d, frac, len, dashoffset, gapLen }
-  })
+function DonutChart({
+  title,
+  description,
+  centerLabel,
+  icon,
+  items,
+}: DonutChartProps) {
+  const total = items.reduce((sum, item) => sum + item.value, 0)
+  const radius = 78
+  const circumference = 2 * Math.PI * radius
+  const segments = items.reduce<
+    Array<DonutItem & { fraction: number; length: number; offset: number }>
+  >((result, item) => {
+    const previous = result.at(-1)
+    const offset = previous ? previous.offset + previous.length : 0
+    const fraction = total ? item.value / total : 0
+    return [
+      ...result,
+      {
+        ...item,
+        fraction,
+        length: fraction * circumference,
+        offset,
+      },
+    ]
+  }, [])
 
   return (
-    <div className="donut-wrap">
-      <svg aria-hidden="true" className="donut-svg" viewBox="0 0 200 200">
-        {/* track ring */}
-        <circle
-          cx={CX}
-          cy={CY}
-          fill="none"
-          r={R}
-          stroke="#f0eef8"
-          strokeWidth={SW}
-        />
-        {segments.map((seg) => (
+    <section className="dashboard-donut-panel">
+      <header className="dashboard-donut-header">
+        <span className="dashboard-donut-icon">{icon}</span>
+        <div>
+          <h2>{title}</h2>
+          <p>{description}</p>
+        </div>
+      </header>
+      <div className="dashboard-donut-content">
+        <svg
+          aria-label={`${title}: ${total.toLocaleString()} total rows`}
+          className="dashboard-donut-svg"
+          role="img"
+          viewBox="0 0 220 220"
+        >
           <circle
-            cx={CX}
-            cy={CY}
+            className="dashboard-donut-track"
+            cx="110"
+            cy="110"
             fill="none"
-            key={seg.label}
-            r={R}
-            stroke={seg.color}
-            strokeDasharray={`${seg.len} ${seg.gapLen}`}
-            strokeDashoffset={seg.dashoffset}
-            strokeLinecap="butt"
-            strokeWidth={SW}
-            transform={`rotate(-90 ${CX} ${CY})`}
+            r={radius}
+            strokeWidth="30"
           />
-        ))}
-        {/* centre label */}
-        <text
-          dominantBaseline="auto"
-          style={{
-            fontSize: 24,
-            fontWeight: 700,
-            fill: '#20202a',
-            fontFamily: 'inherit',
-          }}
-          textAnchor="middle"
-          x={CX}
-          y={CY - 4}
-        >
-          {total.toLocaleString()}
-        </text>
-        <text
-          dominantBaseline="auto"
-          style={{ fontSize: 11, fill: '#73717e', fontFamily: 'inherit' }}
-          textAnchor="middle"
-          x={CX}
-          y={CY + 15}
-        >
-          assets
-        </text>
-      </svg>
-
-      <div className="donut-legend">
-        {segments.map((seg) => (
-          <div className="donut-legend-item" key={seg.label}>
-            <span className="donut-dot" style={{ background: seg.color }} />
-            <span className="donut-legend-label">{seg.label}</span>
-            <span className="donut-legend-count">
-              {seg.value.toLocaleString()}
-            </span>
-            <span className="donut-legend-pct">
-              {Math.round(seg.frac * 100)}%
-            </span>
-          </div>
-        ))}
+          {segments
+            .filter((segment) => segment.value > 0)
+            .map((segment) => (
+              <circle
+                cx="110"
+                cy="110"
+                fill="none"
+                key={segment.label}
+                r={radius}
+                stroke={segment.color}
+                strokeDasharray={`${segment.length} ${circumference - segment.length}`}
+                strokeDashoffset={-segment.offset}
+                strokeWidth="30"
+                transform="rotate(-90 110 110)"
+              />
+            ))}
+          <text
+            className="dashboard-donut-total"
+            textAnchor="middle"
+            x="110"
+            y="105"
+          >
+            {total.toLocaleString()}
+          </text>
+          <text
+            className="dashboard-donut-center-label"
+            textAnchor="middle"
+            x="110"
+            y="128"
+          >
+            {centerLabel}
+          </text>
+        </svg>
+        <div className="dashboard-donut-legend">
+          {segments.map((segment) => (
+            <div className="dashboard-donut-legend-row" key={segment.label}>
+              <span
+                className="dashboard-donut-swatch"
+                style={{ backgroundColor: segment.color }}
+              />
+              <span className="dashboard-donut-legend-label">
+                {segment.label}
+              </span>
+              <strong>{segment.value.toLocaleString()}</strong>
+              <span className="dashboard-donut-percentage">
+                {Math.round(segment.fraction * 100)}%
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
+    </section>
   )
 }
 
-// ── Dashboard page ────────────────────────────────────────────────────────────
+function makeCards(metrics: DashboardMetrics): KpiCard[] {
+  return [
+    {
+      label: 'Total assets',
+      value: metrics.totalAssets,
+      icon: <Database size={20} />,
+      accent: 'violet',
+      sub: 'Processed lineage rows',
+    },
+    {
+      label: 'Upstream sources',
+      value: metrics.upstreamAssets,
+      icon: <TrendingUp size={20} />,
+      accent: 'indigo',
+      sub: 'Rows marked upstream',
+    },
+    {
+      label: 'Downstream assets',
+      value: metrics.downstreamAssets,
+      icon: <TrendingDown size={20} />,
+      accent: 'teal',
+      sub: 'Rows marked downstream',
+    },
+    {
+      label: 'Power BI tables',
+      value: metrics.powerbiAssets,
+      icon: <Zap size={20} />,
+      accent: 'gold',
+      sub: 'Unique source assets',
+    },
+    {
+      label: 'Total reports',
+      value: metrics.reports,
+      icon: <FileBarChart2 size={20} />,
+      accent: 'pink',
+      sub: 'Downstream report rows',
+    },
+    {
+      label: 'Total datasets',
+      value: metrics.datasets,
+      icon: <BarChart3 size={20} />,
+      accent: 'cyan',
+      sub: 'Downstream dataset rows',
+    },
+  ]
+}
 
-function makeCards(m: DashboardMetrics): { primary: KpiCard[]; lower: KpiCard[] } {
-  return {
-    primary: [
-      {
-        label: 'Total assets',
-        value: m.totalAssets,
-        icon: <Database size={18} />,
-        accent: 'violet',
-        sub: 'Unique nodes in lineage',
-      },
-      {
-        label: 'Upstream sources',
-        value: m.upstreamAssets,
-        icon: <TrendingUp size={18} />,
-        accent: 'indigo',
-        sub: 'BigQuery source tables',
-      },
-      {
-        label: 'Power BI tables',
-        value: m.powerbiAssets,
-        icon: <Zap size={18} />,
-        accent: 'gold',
-        sub: 'PBI semantic layer',
-      },
-      {
-        label: 'Downstream assets',
-        value: m.downstreamAssets,
-        icon: <TrendingDown size={18} />,
-        accent: 'teal',
-        sub: 'Datasets and reports',
-      },
-    ],
-    lower: [
-      {
-        label: 'Total reports',
-        value: m.reports,
-        icon: <FileBarChart2 size={18} />,
-        accent: 'pink',
-        sub: 'Downstream reports',
-      },
-      {
-        label: 'Total datasets',
-        value: m.datasets,
-        icon: <BarChart3 size={18} />,
-        accent: 'cyan',
-        sub: 'Downstream datasets',
-      },
-      {
-        label: 'MDR available',
-        value: m.mdrYes,
-        icon: <ShieldCheck size={18} />,
-        accent: 'green',
-        sub: 'Governed assets',
-      },
-      {
-        label: 'MDR not available',
-        value: m.mdrNo,
-        icon: <ShieldX size={18} />,
-        accent: 'red',
-        sub: 'Ungoverned assets',
-      },
-    ],
+export function DashboardPage({ workbooks }: DashboardPageProps) {
+  const [selectedWorkbookId, setSelectedWorkbookId] = useState(
+    ALL_DASHBOARD_WORKBOOKS,
+  )
+  const [selectedSheet, setSelectedSheet] = useState(ALL_DASHBOARD_SHEETS)
+
+  const effectiveWorkbookId =
+    selectedWorkbookId === ALL_DASHBOARD_WORKBOOKS ||
+    workbooks.some((workbook) => workbook.id === selectedWorkbookId)
+      ? selectedWorkbookId
+      : ALL_DASHBOARD_WORKBOOKS
+  const sheetOptions = useMemo(
+    () => getDashboardSheetOptions(workbooks, effectiveWorkbookId),
+    [workbooks, effectiveWorkbookId],
+  )
+  const effectiveSheet =
+    selectedSheet === ALL_DASHBOARD_SHEETS ||
+    sheetOptions.some(
+      (sheet) => sheet.toLowerCase() === selectedSheet.toLowerCase(),
+    )
+      ? selectedSheet
+      : ALL_DASHBOARD_SHEETS
+  const rows = useMemo(
+    () =>
+      getDashboardRows(workbooks, {
+        workbookId: effectiveWorkbookId,
+        sheetName: effectiveSheet,
+      }),
+    [workbooks, effectiveWorkbookId, effectiveSheet],
+  )
+  const stats = useMemo(() => computeDashboardMetrics(rows), [rows])
+  const cards = makeCards(stats)
+
+  const handleWorkbookChange = (workbookId: string) => {
+    setSelectedWorkbookId(workbookId)
+    setSelectedSheet(ALL_DASHBOARD_SHEETS)
   }
-}
-
-export function DashboardPage({
-  workbooks,
-  activeWorkbookId,
-  onSelectWorkbook,
-  sheets,
-  selectedSheet,
-  onSheetChange,
-  rows,
-  metrics = [],
-}: DashboardPageProps) {
-  const stats = useMemo(
-    () => computeDashboardMetrics(rows, metrics),
-    [rows, metrics],
-  )
-
-  const cards = stats ? makeCards(stats) : null
 
   return (
-    <div className="page-content workspace-page">
-      <div className="page-heading workspace-heading">
+    <div className="page-content workspace-page dashboard-page">
+      <div className="page-heading workspace-heading dashboard-heading">
         <div>
           <span className="eyebrow">Analytics overview</span>
           <h1>Dashboard</h1>
           <p>
-            Asset statistics and governance coverage for the selected workbook
-            and sheet.
+            Row-level lineage and governance coverage for the selected scope.
           </p>
         </div>
         <div className="dashboard-filters">
-          {workbooks.length > 1 && (
+          <label>
+            <span>Workbook</span>
             <select
               aria-label="Select workbook"
-              onChange={(e) => onSelectWorkbook(e.target.value)}
-              value={activeWorkbookId ?? ''}
+              onChange={(event) => handleWorkbookChange(event.target.value)}
+              value={effectiveWorkbookId}
             >
-              {workbooks.map((wb) => (
-                <option key={wb.id} value={wb.id}>
-                  {wb.displayName}
+              <option value={ALL_DASHBOARD_WORKBOOKS}>All Workbooks</option>
+              {workbooks.map((workbook) => (
+                <option key={workbook.id} value={workbook.id}>
+                  {workbook.displayName}
                 </option>
               ))}
             </select>
-          )}
-          <select
-            aria-label="Select sheet"
-            onChange={(e) => onSheetChange(e.target.value)}
-            value={selectedSheet}
-          >
-            <option value="all">All sheets</option>
-            {sheets.map((sheet) => (
-              <option key={sheet.name} value={sheet.name}>
-                {sheet.name}
-              </option>
-            ))}
-          </select>
+          </label>
+          <label>
+            <span>Sheet</span>
+            <select
+              aria-label="Select sheet"
+              onChange={(event) => setSelectedSheet(event.target.value)}
+              value={effectiveSheet}
+            >
+              <option value={ALL_DASHBOARD_SHEETS}>All Sheets</option>
+              {sheetOptions.map((sheet) => (
+                <option key={sheet} value={sheet}>
+                  {sheet}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       </div>
 
-      {!stats ? (
-        <div className="empty-table" style={{ minHeight: 240 }}>
-          <Database size={28} />
-          <strong>No data to display</strong>
-          <span>
-            Upload a workbook with valid lineage rows to see statistics.
-          </span>
+      <div className="dashboard-body">
+        <div className="dashboard-scope-summary">
+          <span>{rows.length.toLocaleString()} processed rows in scope</span>
+          {!rows.length && (
+            <small>No processed rows match the selected filters.</small>
+          )}
         </div>
-      ) : (
-        <div className="dashboard-body">
-          {/* Primary KPI strip */}
-          <div className="kpi-grid kpi-grid-primary">
-            {cards!.primary.map((card) => (
-              <div className={`kpi-card kpi-${card.accent}`} key={card.label}>
-                <div className="kpi-icon">{card.icon}</div>
-                <div className="kpi-body">
-                  <strong className="kpi-value">
-                    {card.value.toLocaleString()}
-                  </strong>
-                  <span className="kpi-label">{card.label}</span>
-                  <small className="kpi-sub">{card.sub}</small>
-                </div>
-              </div>
-            ))}
-          </div>
 
-          {/* Analysis section: lower KPI cards + layer donut */}
-          <div className="dashboard-analysis">
-            <div className="analysis-left">
-              <div className="kpi-grid">
-                {cards!.lower.map((card) => (
-                  <div
-                    className={`kpi-card kpi-${card.accent}`}
-                    key={card.label}
-                  >
-                    <div className="kpi-icon">{card.icon}</div>
-                    <div className="kpi-body">
-                      <strong className="kpi-value">
-                        {card.value.toLocaleString()}
-                      </strong>
-                      <span className="kpi-label">{card.label}</span>
-                      <small className="kpi-sub">{card.sub}</small>
-                    </div>
-                  </div>
-                ))}
+        <div className="dashboard-kpi-grid">
+          {cards.map((card) => (
+            <article
+              className={`dashboard-kpi-card kpi-${card.accent}`}
+              key={card.label}
+            >
+              <div className="kpi-icon">{card.icon}</div>
+              <div className="kpi-body">
+                <span className="kpi-label">{card.label}</span>
+                <strong className="kpi-value">
+                  {card.value.toLocaleString()}
+                </strong>
+                <small className="kpi-sub">{card.sub}</small>
               </div>
-            </div>
-
-            <div className="donut-panel">
-              <div className="donut-panel-header">
-                <Layers size={15} />
-                <strong>Layer distribution</strong>
-              </div>
-              <LayerDonut
-                gold={stats.gold}
-                noLayer={stats.noLayer}
-                raw={stats.raw}
-                silver={stats.silver}
-              />
-            </div>
-          </div>
+            </article>
+          ))}
         </div>
-      )}
+
+        <div className="dashboard-donut-grid">
+          <DonutChart
+            centerLabel="rows"
+            description="Processed rows grouped by governed data layer."
+            icon={<Layers3 size={19} />}
+            items={[
+              { label: 'Gold', value: stats.gold, color: '#d99a24' },
+              { label: 'Silver', value: stats.silver, color: '#7c8798' },
+              {
+                label: 'Raw / Bronze',
+                value: stats.raw,
+                color: '#b86838',
+              },
+              {
+                label: 'No Layers',
+                value: stats.noLayer,
+                color: '#c9c4dc',
+              },
+            ]}
+            title="Layer Distribution"
+          />
+          <DonutChart
+            centerLabel="rows"
+            description="Processed rows with and without MDR availability."
+            icon={<ShieldCheck size={19} />}
+            items={[
+              {
+                label: 'MDR available',
+                value: stats.mdrYes,
+                color: '#2d9b6f',
+              },
+              {
+                label: 'MDR not available',
+                value: stats.mdrNo,
+                color: '#e36f65',
+              },
+            ]}
+            title="MDR Coverage"
+          />
+        </div>
+      </div>
     </div>
   )
 }

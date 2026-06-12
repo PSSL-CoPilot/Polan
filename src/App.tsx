@@ -350,18 +350,7 @@ function App() {
 
     // ── Dashboard ────────────────────────────────────────────────────────────
     if (activeView === 'preview') {
-      return (
-        <DashboardPage
-          activeWorkbookId={activeWorkbookId}
-          metrics={metrics}
-          onSelectWorkbook={selectWorkbook}
-          onSheetChange={setSelectedSheet}
-          rows={selectedRows}
-          selectedSheet={selectedSheet}
-          sheets={validSheets}
-          workbooks={workbooks}
-        />
-      )
+      return <DashboardPage workbooks={workbooks} />
     }
 
     // ── Lineage graph ─────────────────────────────────────────────────────────
