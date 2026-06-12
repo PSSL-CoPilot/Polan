@@ -143,56 +143,69 @@ function ViewRow({
 
       {view.isExpanded && (
         <div className="tree-metrics">
-          {view.metrics.map((metric) =>
-            renamingMetricId === metric.id ? (
-              <div className="tree-row metric-row" key={metric.id}>
-                <Sigma size={12} />
-                <InlineRename
-                  onCancel={() => setRenamingMetricId(null)}
-                  onCommit={(name) => {
-                    onRenameMetric(metric.id, name)
-                    setRenamingMetricId(null)
-                  }}
-                  value={metric.name}
-                />
-              </div>
-            ) : (
-              <div
-                className={`tree-row metric-row ${
-                  metric.id === activeMetricId ? 'active' : ''
-                }`}
-                key={metric.id}
-              >
-                <button
-                  className="tree-label"
-                  onClick={() => onSelectMetric(metric.id)}
-                  type="button"
-                >
+          {view.metrics.map((metric) => (
+            <div className="metric-entry" key={metric.id}>
+              {renamingMetricId === metric.id ? (
+                <div className="tree-row metric-row">
                   <Sigma size={12} />
-                  {metric.name}
-                </button>
-                <div className="tree-actions">
-                  <button
-                    aria-label={`Rename ${metric.name}`}
-                    onClick={() => setRenamingMetricId(metric.id)}
-                    title="Rename Metric"
-                    type="button"
-                  >
-                    <Pencil size={11} />
-                  </button>
-                  <button
-                    aria-label={`Delete ${metric.name}`}
-                    className="danger"
-                    onClick={() => onDeleteMetric(metric.id)}
-                    title="Delete Metric"
-                    type="button"
-                  >
-                    <Trash2 size={11} />
-                  </button>
+                  <InlineRename
+                    onCancel={() => setRenamingMetricId(null)}
+                    onCommit={(name) => {
+                      onRenameMetric(metric.id, name)
+                      setRenamingMetricId(null)
+                    }}
+                    value={metric.name}
+                  />
                 </div>
+              ) : (
+                <div
+                  className={`tree-row metric-row ${
+                    metric.id === activeMetricId ? 'active' : ''
+                  }`}
+                >
+                  <button
+                    className="tree-label"
+                    onClick={() => onSelectMetric(metric.id)}
+                    type="button"
+                  >
+                    <Sigma size={12} />
+                    {metric.name}
+                  </button>
+                  <div className="tree-actions">
+                    <button
+                      aria-label={`Rename ${metric.name}`}
+                      onClick={() => setRenamingMetricId(metric.id)}
+                      title="Rename Metric"
+                      type="button"
+                    >
+                      <Pencil size={11} />
+                    </button>
+                    <button
+                      aria-label={`Delete ${metric.name}`}
+                      className="danger"
+                      onClick={() => onDeleteMetric(metric.id)}
+                      title="Delete Metric"
+                      type="button"
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  </div>
+                </div>
+              )}
+              {/* Connected sheet pills */}
+              <div className="metric-sheets-row">
+                {metric.connectedSheets.length > 0 ? (
+                  metric.connectedSheets.map((sheet) => (
+                    <span className="metric-sheet-pill" key={sheet}>
+                      {sheet}
+                    </span>
+                  ))
+                ) : (
+                  <span className="metric-no-tables">No tables linked</span>
+                )}
               </div>
-            ),
-          )}
+            </div>
+          ))}
           {!view.metrics.length && (
             <button
               className="tree-empty"

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { ProcessedRow, SheetData } from '../types'
+import { DERIVED_COLUMNS } from '../types'
 import {
   metricValueForRow,
   type MetricTableContext,
@@ -107,6 +108,12 @@ export function DataTable({
       return sort.ascending ? result : -result
     })
   }, [columns, includeDerived, layer, rows, search, sort, metricContext])
+
+  const colHeaderClass = (col: string) =>
+    metricColumns.includes(col) ||
+    (DERIVED_COLUMNS as readonly string[]).includes(col)
+      ? 'th-derived'
+      : 'th-original'
 
   const exportExtras = metricContext
     ? {
@@ -212,28 +219,14 @@ export function DataTable({
             Columns
           </button>
           {includeDerived && (
-            <div className="export-menu">
-              <button
-                className="ghost-button"
-                onClick={() =>
-                  exportRows(filteredRows, columns, 'csv', exportExtras)
-                }
-                type="button"
-              >
-                <Download size={15} />
-                CSV
-              </button>
-              <button
-                className="primary-button compact"
-                onClick={() =>
-                  exportRows(filteredRows, columns, 'xlsx', exportExtras)
-                }
-                type="button"
-              >
-                <Download size={15} />
-                Excel
-              </button>
-            </div>
+            <button
+              className="primary-button compact"
+              onClick={() => exportRows(filteredRows, columns, exportExtras)}
+              type="button"
+            >
+              <Download size={15} />
+              Export Excel
+            </button>
           )}
         </div>
       </div>
@@ -245,7 +238,7 @@ export function DataTable({
               <th className="row-number">#</th>
               {selectedSheet === 'all' && <th>Sheet</th>}
               {columns.map((column) => (
-                <th key={column}>
+                <th className={colHeaderClass(column)} key={column}>
                   <button onClick={() => toggleSort(column)} type="button">
                     {column}
                     {sort?.column === column &&

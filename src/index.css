@@ -56,27 +56,156 @@ select:focus-visible {
 .app-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 242px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-w, 242px) minmax(0, 1fr);
 }
 
 .sidebar {
   position: fixed;
   inset: 0 auto 0 0;
-  width: 242px;
+  width: var(--sidebar-w, 242px);
   z-index: 20;
   display: flex;
   flex-direction: column;
-  padding: 24px 16px 18px;
+  padding: 0;
   color: #fff;
   background: var(--sidebar);
   border-right: 1px solid #2b2a33;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ── Sidebar brand area ─────────────────────────────────────────────────── */
+
+.sidebar-brand {
+  flex-shrink: 0;
+  padding: 18px 16px 14px;
+  border-bottom: 1px solid #26252d;
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0 8px 34px;
+  padding: 0 4px;
+}
+
+/* ── Collapsible pane system ─────────────────────────────────────────────── */
+
+.sidebar-pane {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid #26252d;
+}
+
+.sidebar-pane.pane-explorer {
+  flex: 1;
+  min-height: 0;
+}
+
+.pane-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 14px 0 10px;
+  cursor: pointer;
+  user-select: none;
+  color: #74727e;
+  transition: background 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+
+.pane-header:hover {
+  background: #1e1e26;
+  color: #9b99a4;
+}
+
+.pane-chevron {
+  transition: transform 0.18s;
+  flex-shrink: 0;
+  color: #74727e;
+}
+
+.pane-chevron.pane-collapsed {
+  transform: rotate(-90deg);
+}
+
+.pane-title {
+  flex: 1;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+}
+
+.pane-action-btn {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  color: #8f8d99;
+  background: #232229;
+  border: 1px solid #2e2d35;
+  border-radius: 5px;
+  transition: 140ms ease;
+  flex-shrink: 0;
+}
+
+.pane-action-btn:hover {
+  color: #fff;
+  background: #2c2b33;
+}
+
+.pane-body {
+  padding: 6px 10px 10px;
+}
+
+.pane-body-grow {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 12px;
+}
+
+/* Hide the internal section labels when components are rendered inside a pane
+   (the pane-header already provides the label and action button). */
+.pane-body .workbook-list > .sidebar-label,
+.pane-body .project-explorer > .sidebar-label {
+  display: none;
+}
+
+/* Remove the separator spacing from child components inside pane bodies since
+   the pane system provides its own borders. */
+.pane-body .workbook-list {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.pane-body .project-explorer {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+/* ── Drag-to-resize handle ────────────────────────────────────────────────── */
+
+/* The handle is an absolute child of the fixed sidebar, sitting on its right edge. */
+.sidebar-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  cursor: col-resize;
+  z-index: 25;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.sidebar-resize-handle:hover {
+  background: rgba(101, 87, 220, 0.4);
 }
 
 .brand-mark {
@@ -2019,4 +2148,85 @@ tbody tr:hover td {
   .metric-card {
     padding-inline: 12px;
   }
+}
+
+/* ── Processed Data table header colors ──────────────────────────────────── */
+
+th.th-original {
+  background: #1e3a5f;
+  color: #fff;
+}
+
+th.th-original button {
+  color: #fff;
+}
+
+th.th-derived {
+  background: #c2410c;
+  color: #fff;
+}
+
+th.th-derived button {
+  color: #fff;
+}
+
+/* ── Project Explorer — metric connected-sheets pills ───────────────────── */
+
+.metric-entry {
+  display: flex;
+  flex-direction: column;
+}
+
+.metric-sheets-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 3px 8px 5px 30px;
+}
+
+.metric-sheet-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 1.5;
+  background: rgba(101, 87, 220, 0.12);
+  color: #6557dc;
+  border: 1px solid rgba(101, 87, 220, 0.2);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.metric-no-tables {
+  font-size: 10px;
+  color: #9090a0;
+  font-style: italic;
+  padding: 1px 0;
+}
+
+/* ── Lineage page — metric filter dropdown ───────────────────────────────── */
+
+.lineage-metric-filter {
+  display: flex;
+  align-items: center;
+}
+
+.lineage-metric-filter select {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.lineage-metric-filter select:focus {
+  border-color: var(--accent);
 }

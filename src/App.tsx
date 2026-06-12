@@ -6,7 +6,7 @@ import {
   GitBranch,
   Sigma,
 } from 'lucide-react'
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './index.css'
 import './workspace.css'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -60,6 +60,11 @@ function App() {
   })
   const [deleteCandidateId, setDeleteCandidateId] = useState<string | null>(null)
   const [lineageFilter, setLineageFilter] = useState<string | null>(null)
+  const [lineageMetricFilter, setLineageMetricFilter] = useState<string | null>(null)
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    const stored = localStorage.getItem('polan-sidebar-w')
+    return stored ? Math.max(200, Math.min(480, Number(stored))) : 242
+  })
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const {
@@ -108,11 +113,17 @@ function App() {
     [activeWorkbook],
   )
 
-  // Switching the active workbook resets sheet selection and lineage filter.
+  // Switching the active workbook resets sheet selection and all lineage filters.
   useEffect(() => {
     setSelectedSheet('all')
     setLineageFilter(null)
+    setLineageMetricFilter(null)
   }, [activeWorkbookId])
+
+  const handleSidebarWidthChange = useCallback((w: number) => {
+    setSidebarWidth(w)
+    localStorage.setItem('polan-sidebar-w', String(w))
+  }, [])
 
   const validSheets =
     workbook?.sheets.filter((sheet) => !sheet.errors.length) ?? []
@@ -139,13 +150,25 @@ function App() {
     [activeMetric, workbook, graph],
   )
 
-  // Rows passed to the lineage graph, filtered by the active chip.
+  // Rows passed to the lineage graph, filtered by the active chip + metric.
   const lineageRows = useMemo(() => {
-    if (!lineageFilter) return selectedRows
-    if (lineageFilter === 'mdr') return selectedRows.filter((r) => r.mdrAvailability)
-    if (lineageFilter === 'no-mdr') return selectedRows.filter((r) => !r.mdrAvailability)
-    return selectedRows.filter((r) => r.layer === (lineageFilter as Layer))
-  }, [selectedRows, lineageFilter])
+    let filtered = selectedRows
+    if (lineageFilter === 'mdr') filtered = filtered.filter((r) => r.mdrAvailability)
+    else if (lineageFilter === 'no-mdr') filtered = filtered.filter((r) => !r.mdrAvailability)
+    else if (lineageFilter) filtered = filtered.filter((r) => r.layer === (lineageFilter as Layer))
+    if (lineageMetricFilter) {
+      const m = metrics.find((x) => x.id === lineageMetricFilter)
+      if (m) filtered = filtered.filter((r) => m.connectedSheets.includes(r.sheet))
+    }
+    return filtered
+  }, [selectedRows, lineageFilter, lineageMetricFilter, metrics])
+
+  // When a metric filter is active, only inject that metric's node so the graph
+  // stays focused on the selected metric's lineage.
+  const lineageMetrics = useMemo(
+    () => (lineageMetricFilter ? metrics.filter((m) => m.id === lineageMetricFilter) : metrics),
+    [metrics, lineageMetricFilter],
+  )
 
   const warningCount =
     workbook?.sheets.reduce(
@@ -369,6 +392,22 @@ function App() {
                   ))}
                 </select>
               </div>
+              {metrics.length > 0 && (
+                <div className="lineage-metric-filter">
+                  <select
+                    aria-label="Filter by metric"
+                    onChange={(e) => setLineageMetricFilter(e.target.value || null)}
+                    value={lineageMetricFilter ?? ''}
+                  >
+                    <option value="">All metrics</option>
+                    {metrics.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="lineage-filters">
                 {LINEAGE_FILTER_OPTS.map(({ key, label, cls }) => (
                   <button
@@ -396,7 +435,7 @@ function App() {
               </div>
             }
           >
-            <LineageGraph metrics={metrics} rows={lineageRows} />
+            <LineageGraph metrics={lineageMetrics} rows={lineageRows} />
           </Suspense>
         </div>
       )
@@ -454,7 +493,10 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div
+      className="app-shell"
+      style={{ '--sidebar-w': `${sidebarWidth}px` } as React.CSSProperties}
+    >
       <Sidebar
         activeMetricId={project.selectedMetricId}
         activeView={activeView}
@@ -474,7 +516,9 @@ function App() {
         onSelectWorkbook={selectWorkbook}
         onToggleView={toggleView}
         onUploadWorkbook={() => fileInputRef.current?.click()}
+        onWidthChange={handleSidebarWidthChange}
         project={project}
+        width={sidebarWidth}
         workbooks={workbooks}
       />
       <div className="main-column">

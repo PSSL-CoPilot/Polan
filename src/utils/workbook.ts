@@ -224,13 +224,16 @@ export function getTableColumns(
 export async function exportRows(
   rows: ProcessedRow[],
   columns: string[],
-  format: 'xlsx' | 'csv',
   extras?: {
     columns: string[]
     valueFor: (row: ProcessedRow) => Record<string, CellValue>
   },
 ) {
-  const XLSX = await import('xlsx')
+  // xlsx-js-style is a SheetJS CE fork that adds cell-style support.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mod = (await import('xlsx-js-style')) as any
+  const XLSX = mod.default ?? mod
+
   const originalColumns = columns.filter(
     (column) =>
       !(DERIVED_COLUMNS as readonly string[]).includes(column) &&
@@ -242,19 +245,36 @@ export async function exportRows(
   }))
   const sheet = XLSX.utils.json_to_sheet(records, { header: columns })
 
-  if (format === 'xlsx') {
-    const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, sheet, 'Processed Lineage')
-    XLSX.writeFile(workbook, 'processed-lineage.xlsx')
-    return
+  // Colour the header row: original Excel columns = dark blue, derived/metric = dark orange.
+  const isOriginal = (col: string) =>
+    !(DERIVED_COLUMNS as readonly string[]).includes(col) &&
+    !extras?.columns.includes(col)
+
+  columns.forEach((col, idx) => {
+    const ref = XLSX.utils.encode_cell({ r: 0, c: idx })
+    sheet[ref] = {
+      v: col,
+      t: 's',
+      s: {
+        fill: {
+          patternType: 'solid',
+          fgColor: { rgb: isOriginal(col) ? '1E3A5F' : 'C2410C' },
+        },
+        font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
+        alignment: { vertical: 'center' },
+      },
+    }
+  })
+
+  // Enable Excel auto-filter on all columns.
+  if (sheet['!ref']) {
+    const range = XLSX.utils.decode_range(sheet['!ref'])
+    sheet['!autofilter'] = {
+      ref: XLSX.utils.encode_range({ r: 0, c: 0 }, { r: 0, c: range.e.c }),
+    }
   }
 
-  const csv = XLSX.utils.sheet_to_csv(sheet)
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = 'processed-lineage.csv'
-  anchor.click()
-  URL.revokeObjectURL(url)
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Processed Lineage')
+  XLSX.writeFile(workbook, 'processed-lineage.xlsx')
 }
