@@ -277,13 +277,40 @@ export function buildLineage(
   const relationKeys = new Set<string>()
   let relations: Relation[] = []
 
+  // Pre-pass: find downstream impacted asset names that appear with conflicting
+  // explicit types (e.g. "Executive Key Metrics Dashboard" is both a Dataset row
+  // and a Report row).  Power BI allows a dataset and a report to share a display
+  // name — they are distinct assets and need distinct node IDs.
+  const conflictNames = new Set<string>()
+  {
+    const seenType = new Map<string, AssetType>()
+    rows.forEach((row) => {
+      if (!row.impactedAsset || row.direction !== 'downstream' || !row.impactedAssetType) return
+      const key = row.impactedAsset.trim().toLowerCase()
+      const t = inferType(row.impactedAsset, 'impacted', 'downstream', row.impactedAssetType)
+      if (t === 'unknown') return
+      const prev = seenType.get(key)
+      if (prev === undefined) seenType.set(key, t)
+      else if (prev !== t) conflictNames.add(key)
+    })
+  }
+
+  // Returns a stable node ID, using a type suffix for names that carry two
+  // different explicit types (to avoid the two assets collapsing into one).
+  const resolveId = (name: string, type: AssetType, isDownstreamImpacted: boolean): string => {
+    if (isDownstreamImpacted && conflictNames.has(name.trim().toLowerCase())) {
+      return `${nodeId(name)}--${type}`
+    }
+    return nodeId(name)
+  }
+
   const upsert = (
+    id: string,
     name: string,
     type: AssetType,
     row: ProcessedRow,
   ): AssetRecord => {
-    const id = nodeId(name)
-    const existing = assets.get(id) ?? emptyAsset(name, type)
+    const existing = assets.get(id) ?? { ...emptyAsset(name, type), id }
     existing.type = chooseType(existing.type, type)
     existing.rows.push(row)
     if (!existing.directions.includes(row.direction)) {
@@ -307,16 +334,13 @@ export function buildLineage(
       return
     }
 
-    const source = upsert(
-      row.sourceAsset,
-      inferType(row.sourceAsset, 'source', row.direction),
-      row,
-    )
-    const impacted = upsert(
-      row.impactedAsset,
-      inferType(row.impactedAsset, 'impacted', row.direction, row.impactedAssetType),
-      row,
-    )
+    const sourceType = inferType(row.sourceAsset, 'source', row.direction)
+    const impactedType = inferType(row.impactedAsset, 'impacted', row.direction, row.impactedAssetType)
+    const sourceId = resolveId(row.sourceAsset, sourceType, false)
+    const impId = resolveId(row.impactedAsset, impactedType, row.direction === 'downstream')
+
+    const source = upsert(sourceId, row.sourceAsset, sourceType, row)
+    const impacted = upsert(impId, row.impactedAsset, impactedType, row)
     const from = row.direction === 'upstream' ? impacted : source
     const to = row.direction === 'upstream' ? source : impacted
     const key = `${from.id}->${to.id}`
