@@ -391,32 +391,79 @@ function insertMetricNodes(
     next.push(relation)
   }
 
+  // For an upstream edge `source → table`, decide how the Immediate Table
+  // reshapes it. Only the Immediate Table feeds the Power BI table directly
+  // (that edge is emitted in the final block); its sibling upstream sources are
+  // rerouted to flow *through* the Immediate Table instead. A source that also
+  // belongs to a route without an Immediate Table keeps its direct edge.
+  const immediateReroute = (
+    routes: MetricTableRoute[],
+    source: string,
+  ): { isImmediate: boolean; reroute?: string } => {
+    let isImmediate = false
+    let reroute: string | undefined
+    let staysDirect = false
+    routes.forEach((route) => {
+      if (route.immediateId === source) {
+        isImmediate = true
+        return
+      }
+      if (!route.upstreamIds.has(source)) return
+      if (route.immediateId) reroute ??= route.immediateId
+      else staysDirect = true
+    })
+    return { isImmediate, reroute: staysDirect ? undefined : reroute }
+  }
+
   relations.forEach((relation) => {
-    const routes =
-      relation.direction === 'downstream'
-        ? routesByTable.get(relation.source)
-        : undefined
-    if (!routes?.length) {
-      push(relation)
+    if (relation.direction === 'downstream') {
+      const routes = routesByTable.get(relation.source)
+      if (!routes?.length) {
+        push(relation)
+        return
+      }
+      routes.forEach((route) => {
+        push({
+          source: relation.source,
+          target: route.metricId,
+          direction: 'downstream',
+        })
+        push({
+          source: route.metricId,
+          target: relation.target,
+          direction: 'downstream',
+        })
+      })
       return
     }
 
-    routes.forEach((route) => {
-      push({
-        source: relation.source,
-        target: route.metricId,
-        direction: 'downstream',
-      })
-      push({
-        source: route.metricId,
-        target: relation.target,
-        direction: 'downstream',
-      })
-    })
+    // Upstream edge into a Power BI table.
+    const routes = routesByTable.get(relation.target)
+    if (!routes?.some((route) => route.immediateId)) {
+      push(relation)
+      return
+    }
+    const { isImmediate, reroute } = immediateReroute(routes, relation.source)
+    // The Immediate Table itself feeds the Power BI table via the final block.
+    if (isImmediate) return
+    if (reroute) {
+      push({ source: relation.source, target: reroute, direction: 'upstream' })
+    } else {
+      push(relation)
+    }
   })
 
   routesByTable.forEach((routes, tableId) => {
     routes.forEach((route) => {
+      // Immediate Table → Power BI table (upstream), so the selected table
+      // appears in the path directly before the Power BI table.
+      if (route.immediateId) {
+        push({
+          source: route.immediateId,
+          target: tableId,
+          direction: 'upstream',
+        })
+      }
       push({
         source: tableId,
         target: route.metricId,

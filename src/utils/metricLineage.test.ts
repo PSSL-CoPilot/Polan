@@ -122,11 +122,13 @@ describe('metric lineage insertion', () => {
     )
 
     expect(metricAsset?.upstreamIds).toEqual(['sales-model'])
+    // Only the Immediate Table feeds the Power BI table directly; the sibling
+    // upstream source is routed through the Immediate Table.
     expect(relationKeys).toContain('bq-orders->sales-model')
-    expect(relationKeys).toContain('bq-customers->sales-model')
+    expect(relationKeys).toContain('bq-customers->bq-orders')
+    expect(relationKeys).not.toContain('bq-customers->sales-model')
     expect(relationKeys).toContain(`sales-model->${metricAsset!.id}`)
     expect(relationKeys).toContain(`${metricAsset!.id}->sales-dataset`)
-    expect(relationKeys).not.toContain('bq-customers->bq-orders')
     expect(
       relationKeys.filter((key) => key === 'bq-orders->sales-model'),
     ).toHaveLength(1)
@@ -225,12 +227,14 @@ describe('metric lineage insertion', () => {
       'sales-model',
       'campaign-model',
     ])
-    expect(graph.assets.get('sales-model')?.upstreamIds).toEqual([
-      'bq-orders',
-      'bq-customers',
-    ])
+    // Each sheet's Immediate Table is the sole direct upstream of its Power BI
+    // table; the other sources feed through that Immediate Table.
+    expect(graph.assets.get('sales-model')?.upstreamIds).toEqual(['bq-orders'])
+    expect(graph.assets.get('bq-orders')?.upstreamIds).toEqual(['bq-customers'])
     expect(graph.assets.get('campaign-model')?.upstreamIds).toEqual([
       'bq-campaigns',
+    ])
+    expect(graph.assets.get('bq-campaigns')?.upstreamIds).toEqual([
       'bq-channels',
     ])
     expect(metricAsset?.downstreamIds).toEqual([])
