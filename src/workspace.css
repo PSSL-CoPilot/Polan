@@ -856,3 +856,116 @@
 .lineage-view .graph-stage {
   height: calc(100vh - 215px);
 }
+
+/* ── Dashboard layout ────────────────────────────────────────────────────── */
+
+.dashboard-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-top: 28px;
+}
+
+.kpi-grid-primary {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.dashboard-analysis {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 20px;
+  align-items: start;
+}
+
+.analysis-left .kpi-grid {
+  margin-top: 0;
+  grid-template-columns: repeat(2, 1fr);
+}
+
+/* ── Donut chart panel ────────────────────────────────────────────────────── */
+
+.donut-panel {
+  background: #fff;
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  padding: 22px 24px 26px;
+}
+
+.donut-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 20px;
+  color: #3d3a47;
+}
+
+.donut-panel-header strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.donut-wrap {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.donut-svg {
+  width: 164px;
+  height: 164px;
+  flex-shrink: 0;
+}
+
+.donut-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.donut-legend-item {
+  display: grid;
+  grid-template-columns: 10px 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.donut-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.donut-legend-label {
+  color: #3d3a47;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.donut-legend-count {
+  color: var(--ink);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.donut-legend-pct {
+  color: #9a97a1;
+  font-size: 11px;
+  min-width: 34px;
+  text-align: right;
+}
+
+@media (max-width: 900px) {
+  .dashboard-analysis {
+    grid-template-columns: 1fr;
+  }
+  .kpi-grid-primary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

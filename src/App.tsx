@@ -330,6 +330,7 @@ function App() {
       return (
         <DashboardPage
           activeWorkbookId={activeWorkbookId}
+          metrics={metrics}
           onSelectWorkbook={selectWorkbook}
           onSheetChange={setSelectedSheet}
           rows={selectedRows}
