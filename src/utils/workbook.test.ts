@@ -6,6 +6,7 @@ import {
   parseQualifiedName,
   parseWorkbookFile,
   processSheet,
+  safeExcelSheetNames,
 } from './workbook'
 import type { OriginalRow } from '../types'
 
@@ -87,5 +88,24 @@ describe('workbook enrichment', () => {
       source: 'bq-customer',
       target: 'customer-table',
     })
+  })
+
+  it('creates safe, unique Excel sheet names for metrics', () => {
+    const names = safeExcelSheetNames([
+      'Unique Sales',
+      'Unique Sales',
+      'Installs: Mobile/Weekly?',
+      'A metric name that is much longer than thirty-one characters',
+      '[]:*?/\\',
+    ])
+
+    expect(names).toEqual([
+      'Unique Sales',
+      'Unique Sales (2)',
+      'Installs Mobile Weekly',
+      'A metric name that is much long',
+      'Metric',
+    ])
+    expect(names.every((name) => name.length <= 31)).toBe(true)
   })
 })

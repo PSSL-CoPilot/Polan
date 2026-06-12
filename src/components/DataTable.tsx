@@ -5,24 +5,32 @@ import {
   Download,
   Filter,
   Search,
+  Sigma,
   SlidersHorizontal,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import type { ProcessedRow, SheetData } from '../types'
 import { DERIVED_COLUMNS } from '../types'
 import {
+  DEFAULT_METRIC_COLUMNS,
+  metricColumnsForEntries,
   metricValueForRow,
+  type MetricTableEntry,
   type MetricTableContext,
 } from '../utils/metricData'
-import { exportRows, getTableColumns } from '../utils/workbook'
+import {
+  exportRows,
+  getTableColumns,
+  type MetricExportSheet,
+} from '../utils/workbook'
 
 interface DataTableProps {
   sheets: SheetData[]
   includeDerived: boolean
   selectedSheet: string
   onSheetChange: (sheet: string) => void
-  /** Active-metric enrichment: prepends Report/Dataset/Metric columns. */
-  metricContext?: MetricTableContext | null
+  /** All project metrics and their processed-data enrichment contexts. */
+  metricEntries?: MetricTableEntry[]
   /** When set, only rows matching this direction are shown. */
   directionFilter?: 'upstream' | 'downstream'
 }
@@ -36,16 +44,23 @@ const valueForColumn = (row: ProcessedRow, column: string) => {
   return row.original[column] ?? ''
 }
 
+interface TableRow {
+  key: string
+  row: ProcessedRow
+  metricContext: MetricTableContext | null
+}
+
 export function DataTable({
   sheets,
   includeDerived,
   selectedSheet,
   onSheetChange,
-  metricContext = null,
+  metricEntries = [],
   directionFilter,
 }: DataTableProps) {
   const [search, setSearch] = useState('')
   const [layer, setLayer] = useState('All layers')
+  const [selectedMetricId, setSelectedMetricId] = useState('all')
   const [sort, setSort] = useState<{ column: string; ascending: boolean } | null>(
     null,
   )
@@ -55,45 +70,70 @@ export function DataTable({
       ? sheets.filter((sheet) => !sheet.errors.length)
       : sheets.filter((sheet) => sheet.name === selectedSheet)
 
-  const metricColumns = metricContext?.columns ?? []
+  const effectiveMetricId =
+    selectedMetricId === 'all' ||
+    metricEntries.some((entry) => entry.metric.id === selectedMetricId)
+      ? selectedMetricId
+      : 'all'
+  const activeMetricEntries =
+    effectiveMetricId === 'all'
+      ? metricEntries
+      : metricEntries.filter((entry) => entry.metric.id === effectiveMetricId)
+  const hasMetrics = metricEntries.length > 0
+  const metricColumns = hasMetrics
+    ? metricColumnsForEntries(activeMetricEntries)
+    : []
+  const baseColumns = getTableColumns(selectedSheets, includeDerived)
   const columns = [
     ...metricColumns,
-    ...getTableColumns(selectedSheets, includeDerived),
+    ...baseColumns,
   ]
 
-  const rows = useMemo(() => {
-    const flat = selectedSheets
-      .flatMap((sheet) => sheet.rows)
-      .filter((row) => !directionFilter || row.direction === directionFilter)
-    if (!metricContext) return flat
-    // Active metric: related rows first, grouped table by table in the order
-    // the tables were connected; everything else keeps its original order.
-    const sheetRank = new Map(
-      metricContext.connectedSheets.map((name, index) => [name, index]),
-    )
-    const related = flat.filter((row) => metricContext.byRowId.has(row.id))
-    const others = flat.filter((row) => !metricContext.byRowId.has(row.id))
-    related.sort(
-      (a, b) => (sheetRank.get(a.sheet) ?? 0) - (sheetRank.get(b.sheet) ?? 0),
-    )
-    return [...related, ...others]
-  }, [selectedSheets, metricContext, directionFilter])
+  const flatRows = selectedSheets
+    .flatMap((sheet) => sheet.rows)
+    .filter((row) => !directionFilter || row.direction === directionFilter)
+  const rows: TableRow[] = hasMetrics
+    ? activeMetricEntries.flatMap((entry) => {
+        if (!entry.context) return []
+        const sheetRank = new Map(
+          entry.context.connectedSheets.map((name, index) => [name, index]),
+        )
+        return flatRows
+          .filter((row) => entry.context!.byRowId.has(row.id))
+          .sort(
+            (a, b) =>
+              (sheetRank.get(a.sheet) ?? 0) -
+              (sheetRank.get(b.sheet) ?? 0),
+          )
+          .map((row) => ({
+            key: `${entry.metric.id}:${row.id}`,
+            row,
+            metricContext: entry.context,
+          }))
+      })
+    : flatRows.map((row) => ({
+        key: row.id,
+        row,
+        metricContext: null,
+      }))
 
-  const getValue = (row: ProcessedRow, column: string) =>
+  const getValue = (item: TableRow, column: string) =>
     metricColumns.includes(column)
-      ? metricValueForRow(metricContext, row.id, column)
-      : valueForColumn(row, column)
+      ? metricValueForRow(item.metricContext, item.row.id, column)
+      : valueForColumn(item.row, column)
 
-  const filteredRows = useMemo(() => {
+  const filteredRows = (() => {
     const query = search.trim().toLowerCase()
-    const filtered = rows.filter((row) => {
+    const filtered = rows.filter((item) => {
       const matchesSearch =
         !query ||
         columns.some((column) =>
-          String(getValue(row, column)).toLowerCase().includes(query),
+          String(getValue(item, column)).toLowerCase().includes(query),
         )
       const matchesLayer =
-        !includeDerived || layer === 'All layers' || row.layer === layer
+        !includeDerived ||
+        layer === 'All layers' ||
+        item.row.layer === layer
       return matchesSearch && matchesLayer
     })
 
@@ -107,7 +147,7 @@ export function DataTable({
       })
       return sort.ascending ? result : -result
     })
-  }, [columns, includeDerived, layer, rows, search, sort, metricContext])
+  })()
 
   const colHeaderClass = (col: string) =>
     metricColumns.includes(col) ||
@@ -115,19 +155,50 @@ export function DataTable({
       ? 'th-derived'
       : 'th-original'
 
-  const exportExtras = metricContext
-    ? {
-        columns: metricColumns,
-        valueFor: (row: ProcessedRow) => {
-          const values: Record<string, string> = {}
-          metricColumns.forEach((column) => {
-            values[column] = String(
-              metricValueForRow(metricContext, row.id, column),
+  const extrasForContext = (
+    context: MetricTableContext | null,
+    columnsForMetric: string[],
+    metricName: string,
+    measureName: string,
+  ) => ({
+    columns: columnsForMetric,
+    valueFor: (row: ProcessedRow) => {
+      const values: Record<string, string> = {}
+      columnsForMetric.forEach((column) => {
+        values[column] = context
+          ? String(metricValueForRow(context, row.id, column))
+          : column === 'Metric Name'
+            ? metricName
+            : column === 'Measure Name'
+              ? measureName
+              : ''
+      })
+      return values
+    },
+  })
+
+  const metricExportSheets: MetricExportSheet[] | undefined = hasMetrics
+    ? activeMetricEntries.map((entry) => {
+        const columnsForMetric = entry.context?.columns ?? [
+          ...DEFAULT_METRIC_COLUMNS,
+        ]
+        return {
+          metricName: entry.metric.name,
+          rows: filteredRows
+            .filter(
+              (item) =>
+                item.metricContext?.metric.id === entry.metric.id,
             )
-          })
-          return values
-        },
-      }
+            .map((item) => item.row),
+          columns: [...columnsForMetric, ...baseColumns],
+          extras: extrasForContext(
+            entry.context,
+            columnsForMetric,
+            entry.metric.name,
+            entry.metric.measureName,
+          ),
+        }
+      })
     : undefined
 
   const toggleSort = (column: string) => {
@@ -138,14 +209,16 @@ export function DataTable({
     )
   }
 
-  const renderCell = (row: ProcessedRow, column: string) => {
+  const renderCell = (item: TableRow, column: string) => {
     if (metricColumns.includes(column)) {
-      const value = String(metricValueForRow(metricContext, row.id, column))
+      const value = String(
+        metricValueForRow(item.metricContext, item.row.id, column),
+      )
       if (!value) return <span className="metric-cell-empty" />
       const highlight = column === 'Metric Name' || column === 'Measure Name'
       return highlight ? <span className="metric-cell">{value}</span> : value
     }
-    const value = valueForColumn(row, column)
+    const value = valueForColumn(item.row, column)
     if (column === 'MDR Availability') {
       return (
         <span className={`checkbox-cell ${value ? 'checked' : ''}`}>
@@ -199,6 +272,23 @@ export function DataTable({
               </option>
             ))}
           </select>
+          {includeDerived && hasMetrics && (
+            <label className="select-with-icon">
+              <Sigma size={15} />
+              <select
+                aria-label="Filter by metric"
+                onChange={(event) => setSelectedMetricId(event.target.value)}
+                value={effectiveMetricId}
+              >
+                <option value="all">All Metrics</option>
+                {metricEntries.map((entry) => (
+                  <option key={entry.metric.id} value={entry.metric.id}>
+                    {entry.metric.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {includeDerived && (
             <label className="select-with-icon">
               <Filter size={15} />
@@ -221,7 +311,14 @@ export function DataTable({
           {includeDerived && (
             <button
               className="primary-button compact"
-              onClick={() => exportRows(filteredRows, columns, exportExtras)}
+              onClick={() =>
+                exportRows(
+                  filteredRows.map((item) => item.row),
+                  columns,
+                  undefined,
+                  metricExportSheets,
+                )
+              }
               type="button"
             >
               <Download size={15} />
@@ -253,18 +350,18 @@ export function DataTable({
             </tr>
           </thead>
           <tbody>
-            {filteredRows.map((row, index) => (
-              <tr key={row.id}>
+            {filteredRows.map((item, index) => (
+              <tr key={item.key}>
                 <td className="row-number">{index + 1}</td>
                 {selectedSheet === 'all' && (
-                  <td className="sheet-cell">{row.sheet}</td>
+                  <td className="sheet-cell">{item.row.sheet}</td>
                 )}
                 {columns.map((column) => (
                   <td
                     key={column}
-                    title={String(getValue(row, column) ?? '')}
+                    title={String(getValue(item, column) ?? '')}
                   >
-                    {renderCell(row, column)}
+                    {renderCell(item, column)}
                   </td>
                 ))}
               </tr>

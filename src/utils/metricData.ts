@@ -19,6 +19,17 @@ export interface MetricTableContext {
   connectedSheets: string[]
 }
 
+export interface MetricTableEntry {
+  metric: MetricRecord
+  context: MetricTableContext | null
+}
+
+export const DEFAULT_METRIC_COLUMNS = [
+  'Dataset',
+  'Metric Name',
+  'Measure Name',
+] as const
+
 export function buildMetricTableContext(
   metric: MetricRecord | null,
   rows: ProcessedRow[],
@@ -76,6 +87,33 @@ export function buildMetricTableContext(
     byRowId,
     connectedSheets: metric.connectedSheets,
   }
+}
+
+export function buildMetricTableEntries(
+  metrics: MetricRecord[],
+  rows: ProcessedRow[],
+  assets: Map<string, AssetRecord>,
+): MetricTableEntry[] {
+  return metrics.map((metric) => ({
+    metric,
+    context: buildMetricTableContext(metric, rows, assets),
+  }))
+}
+
+export function metricColumnsForEntries(
+  entries: MetricTableEntry[],
+): string[] {
+  const maxReports = entries.reduce((max, entry) => {
+    const reportCount =
+      entry.context?.columns.filter((column) => /^Report \d+$/.test(column))
+        .length ?? 0
+    return Math.max(max, reportCount)
+  }, 0)
+  const reportColumns = Array.from(
+    { length: maxReports },
+    (_, index) => `Report ${index + 1}`,
+  )
+  return [...reportColumns, ...DEFAULT_METRIC_COLUMNS]
 }
 
 export function metricValueForRow(

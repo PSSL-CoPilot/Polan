@@ -21,7 +21,7 @@ import { allMetrics, findMetric, useProject } from './hooks/useProject'
 import { useWorkbooks } from './hooks/useWorkbooks'
 import type { AppView, Layer, MetricRecord, WorkbookData } from './types'
 import { buildLineage } from './utils/lineage'
-import { buildMetricTableContext } from './utils/metricData'
+import { buildMetricTableEntries } from './utils/metricData'
 import { downloadProjectFile, parseProjectFile } from './utils/storage'
 
 const LineageGraph = lazy(() =>
@@ -144,10 +144,10 @@ function App() {
     [workbook, metrics],
   )
 
-  const metricContext = useMemo(
-    () => buildMetricTableContext(activeMetric, allRows, graph.assets),
+  const metricEntries = useMemo(
+    () => buildMetricTableEntries(metrics, allRows, graph.assets),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activeMetric, workbook, graph],
+    [metrics, workbook, graph],
   )
 
   // Rows passed to the lineage graph, filtered by the active chip + metric.
@@ -475,15 +475,15 @@ function App() {
             <strong>Enrichment complete</strong>
             Project, dataset, table, MDR availability, and layer fields were
             generated from Qualified Name.
-            {metricContext &&
-              ` Showing "${metricContext.metric.name}" metric columns for connected tables.`}
+            {metrics.length > 0 &&
+              ` Showing processed lineage for ${metrics.length} metric${metrics.length === 1 ? '' : 's'}.`}
           </span>
           <ArrowDownToLine size={18} />
         </div>
         <DataTable
           directionFilter="upstream"
           includeDerived
-          metricContext={metricContext}
+          metricEntries={metricEntries}
           onSheetChange={setSelectedSheet}
           selectedSheet={selectedSheet}
           sheets={workbook.sheets}

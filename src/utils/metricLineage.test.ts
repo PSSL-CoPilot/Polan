@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { MetricRecord, OriginalRow } from '../types'
 import { buildLineage } from './lineage'
-import { buildMetricTableContext } from './metricData'
+import {
+  buildMetricTableContext,
+  buildMetricTableEntries,
+  metricColumnsForEntries,
+} from './metricData'
 import { processSheet } from './workbook'
 
 const columns = ['Source Asset', 'Impacted Asset', 'Direction', 'Qualified Name']
@@ -90,5 +94,36 @@ describe('metric lineage insertion', () => {
       'Measure Name': 'SUM(net_revenue)',
       'Report 1': 'Revenue Report',
     })
+  })
+
+  it('builds independent processed-data contexts for every metric', () => {
+    const secondMetric: MetricRecord = {
+      ...metric,
+      id: 'm2',
+      name: 'Unique Sales',
+      measureName: 'DISTINCTCOUNT(order_id)',
+    }
+    const sheet = processSheet('Sales', sheetRows, columns)
+    const graph = buildLineage(sheet.rows, [metric, secondMetric])
+    const entries = buildMetricTableEntries(
+      [metric, secondMetric],
+      sheet.rows,
+      graph.assets,
+    )
+
+    expect(entries).toHaveLength(2)
+    expect(entries.map((entry) => entry.metric.name)).toEqual([
+      'Net Revenue',
+      'Unique Sales',
+    ])
+    expect(entries.every((entry) => entry.context?.byRowId.size === 3)).toBe(
+      true,
+    )
+    expect(metricColumnsForEntries(entries)).toEqual([
+      'Report 1',
+      'Dataset',
+      'Metric Name',
+      'Measure Name',
+    ])
   })
 })

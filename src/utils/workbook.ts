@@ -221,60 +221,132 @@ export function getTableColumns(
   return includeDerived ? [...originals, ...DERIVED_COLUMNS] : originals
 }
 
+interface ExportExtras {
+  columns: string[]
+  valueFor: (row: ProcessedRow) => Record<string, CellValue>
+}
+
+export interface MetricExportSheet {
+  metricName: string
+  rows: ProcessedRow[]
+  columns: string[]
+  extras: ExportExtras
+}
+
+export function safeExcelSheetNames(names: string[]): string[] {
+  const used = new Set<string>()
+
+  return names.map((name) => {
+    const cleaned =
+      name
+        .replace(/[\\/?*[\]:]/g, ' ')
+        .split('')
+        .map((character) =>
+          character.charCodeAt(0) < 32 ? ' ' : character,
+        )
+        .join('')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/^'+|'+$/g, '') || 'Metric'
+    const base = cleaned.slice(0, 31).trim() || 'Metric'
+    let candidate = base
+    let duplicateIndex = 2
+
+    while (used.has(candidate.toLowerCase())) {
+      const suffix = ` (${duplicateIndex})`
+      candidate =
+        `${base.slice(0, Math.max(1, 31 - suffix.length)).trimEnd()}${suffix}`
+      duplicateIndex += 1
+    }
+
+    used.add(candidate.toLowerCase())
+    return candidate
+  })
+}
+
 export async function exportRows(
   rows: ProcessedRow[],
   columns: string[],
-  extras?: {
-    columns: string[]
-    valueFor: (row: ProcessedRow) => Record<string, CellValue>
-  },
+  extras?: ExportExtras,
+  metricSheets?: MetricExportSheet[],
 ) {
   // xlsx-js-style is a SheetJS CE fork that adds cell-style support.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mod = (await import('xlsx-js-style')) as any
   const XLSX = mod.default ?? mod
 
-  const originalColumns = columns.filter(
-    (column) =>
-      !(DERIVED_COLUMNS as readonly string[]).includes(column) &&
-      !extras?.columns.includes(column),
-  )
-  const records = rows.map((row) => ({
-    ...(extras ? extras.valueFor(row) : {}),
-    ...processedRowToRecord(row, originalColumns),
-  }))
-  const sheet = XLSX.utils.json_to_sheet(records, { header: columns })
+  const createSheet = (
+    sheetRows: ProcessedRow[],
+    sheetColumns: string[],
+    sheetExtras?: ExportExtras,
+  ) => {
+    const originalColumns = sheetColumns.filter(
+      (column) =>
+        !(DERIVED_COLUMNS as readonly string[]).includes(column) &&
+        !sheetExtras?.columns.includes(column),
+    )
+    const records = sheetRows.map((row) => ({
+      ...(sheetExtras ? sheetExtras.valueFor(row) : {}),
+      ...processedRowToRecord(row, originalColumns),
+    }))
+    const sheet = XLSX.utils.json_to_sheet(records, { header: sheetColumns })
 
-  // Colour the header row: original Excel columns = dark blue, derived/metric = dark orange.
-  const isOriginal = (col: string) =>
-    !(DERIVED_COLUMNS as readonly string[]).includes(col) &&
-    !extras?.columns.includes(col)
+    // Colour the header row: original Excel columns = dark blue, derived/metric = dark orange.
+    const isOriginal = (col: string) =>
+      !(DERIVED_COLUMNS as readonly string[]).includes(col) &&
+      !sheetExtras?.columns.includes(col)
 
-  columns.forEach((col, idx) => {
-    const ref = XLSX.utils.encode_cell({ r: 0, c: idx })
-    sheet[ref] = {
-      v: col,
-      t: 's',
-      s: {
-        fill: {
-          patternType: 'solid',
-          fgColor: { rgb: isOriginal(col) ? '1E3A5F' : 'C2410C' },
+    sheetColumns.forEach((col, idx) => {
+      const ref = XLSX.utils.encode_cell({ r: 0, c: idx })
+      sheet[ref] = {
+        v: col,
+        t: 's',
+        s: {
+          fill: {
+            patternType: 'solid',
+            fgColor: { rgb: isOriginal(col) ? '1E3A5F' : 'C2410C' },
+          },
+          font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
+          alignment: { vertical: 'center' },
         },
-        font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
-        alignment: { vertical: 'center' },
-      },
-    }
-  })
+      }
+    })
 
-  // Enable Excel auto-filter on all columns.
-  if (sheet['!ref']) {
-    const range = XLSX.utils.decode_range(sheet['!ref'])
-    sheet['!autofilter'] = {
-      ref: XLSX.utils.encode_range({ r: 0, c: 0 }, { r: 0, c: range.e.c }),
+    // Enable Excel auto-filter on all columns.
+    if (sheet['!ref']) {
+      const range = XLSX.utils.decode_range(sheet['!ref'])
+      sheet['!autofilter'] = {
+        ref: XLSX.utils.encode_range(
+          { r: 0, c: 0 },
+          { r: 0, c: range.e.c },
+        ),
+      }
     }
+    return sheet
   }
 
   const workbook = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(workbook, sheet, 'Processed Lineage')
+  if (metricSheets?.length) {
+    const sheetNames = safeExcelSheetNames(
+      metricSheets.map((metricSheet) => metricSheet.metricName),
+    )
+    metricSheets.forEach((metricSheet, index) => {
+      XLSX.utils.book_append_sheet(
+        workbook,
+        createSheet(
+          metricSheet.rows,
+          metricSheet.columns,
+          metricSheet.extras,
+        ),
+        sheetNames[index],
+      )
+    })
+  } else {
+    XLSX.utils.book_append_sheet(
+      workbook,
+      createSheet(rows, columns, extras),
+      'Processed Lineage',
+    )
+  }
   XLSX.writeFile(workbook, 'processed-lineage.xlsx')
 }
