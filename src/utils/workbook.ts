@@ -102,6 +102,11 @@ export function processSheet(
     return { name, originalColumns: columns, rows: [], errors, warnings }
   }
 
+  // Optional column — present in some workbooks, not required.
+  const impactedAssetTypeCol = columns.find(
+    (col) => normalizedHeader(col) === 'impacted asset type',
+  )
+
   const rows = inputRows
     .filter((row) => !isEmptyRow(row))
     .map((original, index): ProcessedRow => {
@@ -124,12 +129,17 @@ export function processSheet(
         warnings.push(`Row ${index + 2}: ${rowWarnings.join(' ')}`)
       }
 
+      const impactedAssetType = impactedAssetTypeCol
+        ? displayValue(original[impactedAssetTypeCol]) || undefined
+        : undefined
+
       return {
         id: `${name}-${index}`,
         sheet: name,
         original,
         sourceAsset,
         impactedAsset,
+        impactedAssetType,
         direction,
         qualifiedName,
         projectName: parsed.projectName,

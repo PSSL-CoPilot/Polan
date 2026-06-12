@@ -52,12 +52,17 @@ const nodeId = (name: string) =>
  *   - the Source Asset is always the Power BI table
  *   - an upstream Impacted Asset is the BigQuery / source table
  *   - a downstream Impacted Asset is a dataset or a report
- * Name keywords only disambiguate dataset vs report (and rescue obvious cases).
+ *
+ * For downstream impacted assets, the optional `impactedAssetType` value
+ * (read directly from the "Impacted Asset Type" column when present) takes
+ * priority over name-keyword detection, giving an authoritative signal without
+ * relying on heuristics.
  */
 function inferType(
   name: string,
   role: 'source' | 'impacted',
   direction: string,
+  impactedAssetType?: string,
 ): AssetType {
   // The Source Asset is, by spec, always the Power BI table — this wins over
   // any keyword in the name (e.g. "Sales Dashboard Model" is a Power BI table,
@@ -65,7 +70,13 @@ function inferType(
   if (role === 'source') return 'powerbi'
   // Upstream Impacted Assets are the BigQuery / source tables that feed it.
   if (direction === 'upstream') return 'bigquery'
-  // Downstream Impacted Assets are datasets or reports.
+  // Downstream: use the explicit "Impacted Asset Type" column first (case-insensitive).
+  if (impactedAssetType) {
+    const t = impactedAssetType.toLowerCase()
+    if (t.includes('dataset')) return 'dataset'
+    if (/report|dashboard|scorecard|paginated/.test(t)) return 'report'
+  }
+  // Name-based fallback when the column is absent or unrecognised.
   const value = name.toLowerCase()
   if (/report|dashboard|scorecard|paginated|\.rdl/.test(value)) return 'report'
   if (/semantic|\bdataset\b|\bmodel\b|\.pbix|workspace/.test(value)) {
@@ -303,7 +314,7 @@ export function buildLineage(
     )
     const impacted = upsert(
       row.impactedAsset,
-      inferType(row.impactedAsset, 'impacted', row.direction),
+      inferType(row.impactedAsset, 'impacted', row.direction, row.impactedAssetType),
       row,
     )
     const from = row.direction === 'upstream' ? impacted : source

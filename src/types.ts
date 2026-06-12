@@ -32,6 +32,7 @@ export interface ProcessedRow {
   original: OriginalRow
   sourceAsset: string
   impactedAsset: string
+  impactedAssetType?: string
   direction: string
   qualifiedName: string
   projectName: string
