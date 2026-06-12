@@ -1,7 +1,7 @@
 import {
   ArrowUpDown,
+  BarChart3,
   Database,
-  FileSpreadsheet,
   GitBranch,
   TableProperties,
 } from 'lucide-react'
@@ -36,19 +36,13 @@ const items: Array<{
   id: AppView
   label: string
   description: string
-  icon: typeof FileSpreadsheet
+  icon: typeof BarChart3
 }> = [
   {
-    id: 'upload',
-    label: 'Upload',
-    description: 'Workbook intake',
-    icon: FileSpreadsheet,
-  },
-  {
     id: 'preview',
-    label: 'Data preview',
-    description: 'Original records',
-    icon: TableProperties,
+    label: 'Dashboard',
+    description: 'KPI overview',
+    icon: BarChart3,
   },
   {
     id: 'lineage',
@@ -61,6 +55,12 @@ const items: Array<{
     label: 'Processed data',
     description: 'Enriched output',
     icon: Database,
+  },
+  {
+    id: 'metric',
+    label: 'Metric workspace',
+    description: 'Metric definitions',
+    icon: TableProperties,
   },
 ]
 
@@ -94,7 +94,7 @@ export function Sidebar({
       <nav className="sidebar-nav" aria-label="Workspace navigation">
         {items.map((item) => {
           const Icon = item.icon
-          const disabled = item.id !== 'upload' && !hasWorkbook
+          const disabled = !hasWorkbook
           return (
             <button
               className={`nav-item ${activeView === item.id ? 'active' : ''}`}

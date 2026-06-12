@@ -708,3 +708,151 @@
 .toast.toast-error svg {
   color: #ff8d83;
 }
+
+/* ── Dashboard KPI cards ────────────────────────────────────────────────── */
+
+.dashboard-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dashboard-filters select {
+  padding: 5px 27px 5px 7px;
+  color: var(--ink);
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2395919d'/%3E%3C/svg%3E")
+    no-repeat right 9px center / 8px 5px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  appearance: none;
+  cursor: pointer;
+  transition: border-color 0.12s;
+}
+
+.dashboard-filters select:hover {
+  border-color: #b8b4c4;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 14px;
+  margin-top: 28px;
+}
+
+.kpi-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px 20px;
+  background: #fff;
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.kpi-card:hover {
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.07);
+  border-color: #d4d0de;
+}
+
+.kpi-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.kpi-violet .kpi-icon  { background: #ede9fe; color: #6557dc; }
+.kpi-indigo  .kpi-icon { background: #e0e7ff; color: #4338ca; }
+.kpi-teal    .kpi-icon { background: #ccfbf1; color: #26968a; }
+.kpi-gold    .kpi-icon { background: #fef3c7; color: #b45309; }
+.kpi-silver  .kpi-icon { background: #f1f5f9; color: #475569; }
+.kpi-bronze  .kpi-icon { background: #fff7ed; color: #9a3412; }
+.kpi-green   .kpi-icon { background: #dcfce7; color: #16a34a; }
+.kpi-red     .kpi-icon { background: #fee2e2; color: #dc2626; }
+.kpi-pink    .kpi-icon { background: #fce7f3; color: #be185d; }
+.kpi-cyan    .kpi-icon { background: #cffafe; color: #0e7490; }
+
+.kpi-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.kpi-value {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-label {
+  margin-top: 5px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #3d3a47;
+}
+
+.kpi-sub {
+  margin-top: 3px;
+  font-size: 11px;
+  color: #9a97a1;
+}
+
+/* ── Lineage filter chips ────────────────────────────────────────────────── */
+
+.lineage-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.lineage-filters {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 100px;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  color: #73717e;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+
+.filter-chip:hover {
+  border-color: #b8b4c4;
+  color: var(--ink);
+}
+
+.filter-chip.active          { background: #efedff; border-color: var(--accent); color: var(--accent); }
+.filter-chip.active-gold     { background: #fef3c7; border-color: #b45309; color: #b45309; }
+.filter-chip.active-silver   { background: #f1f5f9; border-color: #475569; color: #475569; }
+.filter-chip.active-raw      { background: #fff7ed; border-color: #9a3412; color: #9a3412; }
+.filter-chip.active-mdr      { background: #dcfce7; border-color: #16a34a; color: #16a34a; }
+.filter-chip.active-no-mdr   { background: #fee2e2; border-color: #dc2626; color: #dc2626; }
+
+/* Taller graph canvas on the lineage view since the KPI bar is absent. */
+.lineage-view .graph-stage {
+  height: calc(100vh - 215px);
+}

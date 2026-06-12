@@ -3,15 +3,14 @@ import {
   AlertTriangle,
   ArrowDownToLine,
   CheckCircle2,
-  Database,
   GitBranch,
-  Layers3,
   Sigma,
 } from 'lucide-react'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import './index.css'
 import './workspace.css'
 import { ConfirmDialog } from './components/ConfirmDialog'
+import { DashboardPage } from './components/DashboardPage'
 import { DataTable } from './components/DataTable'
 import { MetricModal, type MetricFormValues } from './components/MetricModal'
 import { MetricWorkspace } from './components/MetricWorkspace'
@@ -20,7 +19,7 @@ import { Topbar } from './components/Topbar'
 import { UploadWorkspace } from './components/UploadWorkspace'
 import { allMetrics, findMetric, useProject } from './hooks/useProject'
 import { useWorkbooks } from './hooks/useWorkbooks'
-import type { AppView, MetricRecord, WorkbookData } from './types'
+import type { AppView, Layer, MetricRecord, WorkbookData } from './types'
 import { buildLineage } from './utils/lineage'
 import { buildMetricTableContext } from './utils/metricData'
 import { downloadProjectFile, parseProjectFile } from './utils/storage'
@@ -31,35 +30,19 @@ const LineageGraph = lazy(() =>
   })),
 )
 
-const pageCopy: Record<
-  Exclude<AppView, 'upload' | 'metric'>,
-  { eyebrow: string; title: string; description: string }
-> = {
-  preview: {
-    eyebrow: 'Source inspection',
-    title: 'Data preview',
-    description:
-      'Review the source records exactly as they appear in the workbook.',
-  },
-  lineage: {
-    eyebrow: 'Relationship explorer',
-    title: 'Lineage graph',
-    description:
-      'Trace every dependency from raw source tables to business-facing reports.',
-  },
-  processed: {
-    eyebrow: 'Governed output',
-    title: 'Processed data',
-    description:
-      'Search, filter, and export your enriched lineage inventory.',
-  },
-}
-
 interface MetricModalState {
   open: boolean
   viewId: string | null
   editing: MetricRecord | null
 }
+
+const LINEAGE_FILTER_OPTS = [
+  { key: 'Gold', label: 'Gold', cls: 'gold' },
+  { key: 'Silver', label: 'Silver', cls: 'silver' },
+  { key: 'Raw', label: 'Bronze / Raw', cls: 'raw' },
+  { key: 'mdr', label: 'MDR available', cls: 'mdr' },
+  { key: 'no-mdr', label: 'Not in MDR', cls: 'no-mdr' },
+] as const
 
 function App() {
   const [activeView, setActiveView] = useState<AppView>('upload')
@@ -76,6 +59,7 @@ function App() {
     editing: null,
   })
   const [deleteCandidateId, setDeleteCandidateId] = useState<string | null>(null)
+  const [lineageFilter, setLineageFilter] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const {
@@ -107,7 +91,7 @@ function App() {
   } = useWorkbooks()
 
   // Present the active workbook through the existing WorkbookData shape so the
-  // downstream views (preview, processed, lineage, metrics) stay unchanged.
+  // downstream views stay unchanged.
   const workbook = useMemo<WorkbookData | null>(
     () =>
       activeWorkbook
@@ -124,9 +108,10 @@ function App() {
     [activeWorkbook],
   )
 
-  // Switching the active workbook always resets the sheet selector to "all".
+  // Switching the active workbook resets sheet selection and lineage filter.
   useEffect(() => {
     setSelectedSheet('all')
+    setLineageFilter(null)
   }, [activeWorkbookId])
 
   const validSheets =
@@ -154,17 +139,19 @@ function App() {
     [activeMetric, workbook, graph],
   )
 
+  // Rows passed to the lineage graph, filtered by the active chip.
+  const lineageRows = useMemo(() => {
+    if (!lineageFilter) return selectedRows
+    if (lineageFilter === 'mdr') return selectedRows.filter((r) => r.mdrAvailability)
+    if (lineageFilter === 'no-mdr') return selectedRows.filter((r) => !r.mdrAvailability)
+    return selectedRows.filter((r) => r.layer === (lineageFilter as Layer))
+  }, [selectedRows, lineageFilter])
+
   const warningCount =
     workbook?.sheets.reduce(
       (count, sheet) => count + sheet.warnings.length + sheet.errors.length,
       0,
     ) ?? 0
-  const mdrCoverage = allRows.length
-    ? Math.round(
-        (allRows.filter((row) => row.mdrAvailability).length / allRows.length) *
-          100,
-      )
-    : 0
 
   const handleFiles = async (files: File[]) => {
     const excelFiles = files.filter((file) => /\.xlsx?$/i.test(file.name))
@@ -182,8 +169,6 @@ function App() {
     if (added > 0) {
       setError('')
       setActiveView('preview')
-      // We've navigated off the upload page, so report any skipped files via
-      // the toast rather than the upload-page error banner.
       if (errorText) flashNotice(`Some files were skipped: ${errorText}`, 'error')
       else flashNotice(added === 1 ? 'Workbook added.' : `${added} workbooks added.`)
     } else {
@@ -205,6 +190,7 @@ function App() {
       replaceProject(nextProject)
       replaceWorkbooks(nextWorkbooks)
       setSelectedSheet('all')
+      setLineageFilter(null)
       setActiveView(nextWorkbooks.workbooks.length ? 'preview' : 'upload')
       flashNotice(`Project "${nextProject.name}" restored.`)
     } catch (caught) {
@@ -264,35 +250,20 @@ function App() {
     }
   }
 
-  const renderMetricsBar = () => (
-    <div className="metrics-grid">
-      <div className="metric-card">
-        <span className="metric-icon violet"><Database size={17} /></span>
-        <div><span>Total assets</span><strong>{graph.nodes.length}</strong></div>
-        <small>Unique across sheets</small>
-      </div>
-      <div className="metric-card">
-        <span className="metric-icon teal"><GitBranch size={17} /></span>
-        <div><span>Relationships</span><strong>{graph.edges.length}</strong></div>
-        <small>Validated connections</small>
-      </div>
-      <div className="metric-card">
-        <span className="metric-icon amber"><Layers3 size={17} /></span>
-        <div><span>MDR coverage</span><strong>{mdrCoverage}%</strong></div>
-        <small>Governed datasets</small>
-      </div>
-      <div className="metric-card">
-        <span className="metric-icon pink"><Sigma size={17} /></span>
-        <div><span>Metrics</span><strong>{metrics.length}</strong></div>
-        <small>
-          {metrics.filter((metric) => metric.connectedSheets.length).length}{' '}
-          connected to lineage
-        </small>
-      </div>
+  const warningBanner = warningCount > 0 && (
+    <div className="warning-banner">
+      <AlertTriangle size={16} />
+      <span>
+        <strong>
+          {warningCount} data quality note{warningCount === 1 ? '' : 's'}
+        </strong>
+        Some rows have incomplete qualified names or validation issues.
+      </span>
     </div>
   )
 
   const renderWorkspace = () => {
+    // ── Metric workspace ────────────────────────────────────────────────────
     if (activeView === 'metric') {
       if (!activeMetric) {
         return (
@@ -341,6 +312,7 @@ function App() {
       )
     }
 
+    // ── Upload / no workbook ─────────────────────────────────────────────────
     if (activeView === 'upload' || !workbook) {
       return (
         <UploadWorkspace
@@ -353,19 +325,98 @@ function App() {
       )
     }
 
-    const copy = pageCopy[activeView]
+    // ── Dashboard ────────────────────────────────────────────────────────────
+    if (activeView === 'preview') {
+      return (
+        <DashboardPage
+          activeWorkbookId={activeWorkbookId}
+          onSelectWorkbook={selectWorkbook}
+          onSheetChange={setSelectedSheet}
+          rows={selectedRows}
+          selectedSheet={selectedSheet}
+          sheets={validSheets}
+          workbooks={workbooks}
+        />
+      )
+    }
+
+    // ── Lineage graph ─────────────────────────────────────────────────────────
+    if (activeView === 'lineage') {
+      return (
+        <div className="page-content workspace-page lineage-view">
+          <div className="page-heading workspace-heading">
+            <div>
+              <span className="eyebrow">Relationship explorer</span>
+              <h1>Lineage graph</h1>
+              <p>
+                Trace every dependency from raw source tables to
+                business-facing reports.
+              </p>
+            </div>
+            <div className="lineage-controls">
+              <div className="sheet-switcher">
+                <span>Viewing</span>
+                <select
+                  onChange={(e) => setSelectedSheet(e.target.value)}
+                  value={selectedSheet}
+                >
+                  <option value="all">All workbook sheets</option>
+                  {validSheets.map((sheet) => (
+                    <option key={sheet.name} value={sheet.name}>
+                      {sheet.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="lineage-filters">
+                {LINEAGE_FILTER_OPTS.map(({ key, label, cls }) => (
+                  <button
+                    className={`filter-chip ${
+                      lineageFilter === key ? `active active-${cls}` : ''
+                    }`}
+                    key={key}
+                    onClick={() =>
+                      setLineageFilter((f) => (f === key ? null : key))
+                    }
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          {warningBanner}
+          <Suspense
+            fallback={
+              <div className="graph-loading">
+                <GitBranch size={20} />
+                Building lineage canvas...
+              </div>
+            }
+          >
+            <LineageGraph metrics={metrics} rows={lineageRows} />
+          </Suspense>
+        </div>
+      )
+    }
+
+    // ── Processed data ────────────────────────────────────────────────────────
     return (
       <div className="page-content workspace-page">
         <div className="page-heading workspace-heading">
           <div>
-            <span className="eyebrow">{copy.eyebrow}</span>
-            <h1>{copy.title}</h1>
-            <p>{copy.description}</p>
+            <span className="eyebrow">Governed output</span>
+            <h1>Processed data</h1>
+            <p>
+              Search, filter, and export your enriched lineage inventory.
+              Upstream rows only.
+            </p>
           </div>
           <div className="sheet-switcher">
             <span>Viewing</span>
             <select
-              onChange={(event) => setSelectedSheet(event.target.value)}
+              onChange={(e) => setSelectedSheet(e.target.value)}
               value={selectedSheet}
             >
               <option value="all">All workbook sheets</option>
@@ -377,61 +428,26 @@ function App() {
             </select>
           </div>
         </div>
-
-        {renderMetricsBar()}
-
-        {warningCount > 0 && (
-          <div className="warning-banner">
-            <AlertTriangle size={16} />
-            <span>
-              <strong>{warningCount} data quality note{warningCount === 1 ? '' : 's'}</strong>
-              Some rows have incomplete qualified names or validation issues.
-            </span>
-          </div>
-        )}
-
-        {activeView === 'lineage' && (
-          <Suspense
-            fallback={
-              <div className="graph-loading">
-                <GitBranch size={20} />
-                Building lineage canvas...
-              </div>
-            }
-          >
-            <LineageGraph metrics={metrics} rows={selectedRows} />
-          </Suspense>
-        )}
-        {activeView === 'preview' && (
-          <DataTable
-            includeDerived={false}
-            onSheetChange={setSelectedSheet}
-            selectedSheet={selectedSheet}
-            sheets={workbook.sheets}
-          />
-        )}
-        {activeView === 'processed' && (
-          <>
-            <div className="enrichment-note">
-              <CheckCircle2 size={17} />
-              <span>
-                <strong>Enrichment complete</strong>
-                Project, dataset, table, MDR availability, and layer fields were
-                generated from Qualified Name.
-                {metricContext &&
-                  ` Showing "${metricContext.metric.name}" metric columns for connected tables.`}
-              </span>
-              <ArrowDownToLine size={18} />
-            </div>
-            <DataTable
-              includeDerived
-              metricContext={metricContext}
-              onSheetChange={setSelectedSheet}
-              selectedSheet={selectedSheet}
-              sheets={workbook.sheets}
-            />
-          </>
-        )}
+        {warningBanner}
+        <div className="enrichment-note">
+          <CheckCircle2 size={17} />
+          <span>
+            <strong>Enrichment complete</strong>
+            Project, dataset, table, MDR availability, and layer fields were
+            generated from Qualified Name.
+            {metricContext &&
+              ` Showing "${metricContext.metric.name}" metric columns for connected tables.`}
+          </span>
+          <ArrowDownToLine size={18} />
+        </div>
+        <DataTable
+          directionFilter="upstream"
+          includeDerived
+          metricContext={metricContext}
+          onSheetChange={setSelectedSheet}
+          selectedSheet={selectedSheet}
+          sheets={workbook.sheets}
+        />
       </div>
     )
   }
@@ -483,7 +499,11 @@ function App() {
             animate={{ opacity: 1, y: 0 }}
             className="view-motion"
             initial={{ opacity: 0, y: 6 }}
-            key={activeView === 'metric' ? `metric-${activeMetric?.id}` : activeView}
+            key={
+              activeView === 'metric'
+                ? `metric-${activeMetric?.id}`
+                : activeView
+            }
             transition={{ duration: 0.18 }}
           >
             {renderWorkspace()}

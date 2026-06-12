@@ -2,8 +2,6 @@ import {
   ArrowDown,
   ArrowUp,
   Check,
-  ChevronLeft,
-  ChevronRight,
   Download,
   Filter,
   Search,
@@ -24,9 +22,9 @@ interface DataTableProps {
   onSheetChange: (sheet: string) => void
   /** Active-metric enrichment: prepends Report/Dataset/Metric columns. */
   metricContext?: MetricTableContext | null
+  /** When set, only rows matching this direction are shown. */
+  directionFilter?: 'upstream' | 'downstream'
 }
-
-const PAGE_SIZE = 8
 
 const valueForColumn = (row: ProcessedRow, column: string) => {
   if (column === 'Project Name') return row.projectName
@@ -43,24 +41,29 @@ export function DataTable({
   selectedSheet,
   onSheetChange,
   metricContext = null,
+  directionFilter,
 }: DataTableProps) {
   const [search, setSearch] = useState('')
   const [layer, setLayer] = useState('All layers')
   const [sort, setSort] = useState<{ column: string; ascending: boolean } | null>(
     null,
   )
-  const [page, setPage] = useState(1)
+
   const selectedSheets =
     selectedSheet === 'all'
       ? sheets.filter((sheet) => !sheet.errors.length)
       : sheets.filter((sheet) => sheet.name === selectedSheet)
+
   const metricColumns = metricContext?.columns ?? []
   const columns = [
     ...metricColumns,
     ...getTableColumns(selectedSheets, includeDerived),
   ]
+
   const rows = useMemo(() => {
-    const flat = selectedSheets.flatMap((sheet) => sheet.rows)
+    const flat = selectedSheets
+      .flatMap((sheet) => sheet.rows)
+      .filter((row) => !directionFilter || row.direction === directionFilter)
     if (!metricContext) return flat
     // Active metric: related rows first, grouped table by table in the order
     // the tables were connected; everything else keeps its original order.
@@ -73,7 +76,7 @@ export function DataTable({
       (a, b) => (sheetRank.get(a.sheet) ?? 0) - (sheetRank.get(b.sheet) ?? 0),
     )
     return [...related, ...others]
-  }, [selectedSheets, metricContext])
+  }, [selectedSheets, metricContext, directionFilter])
 
   const getValue = (row: ProcessedRow, column: string) =>
     metricColumns.includes(column)
@@ -105,13 +108,6 @@ export function DataTable({
     })
   }, [columns, includeDerived, layer, rows, search, sort, metricContext])
 
-  const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE))
-  const currentPage = Math.min(page, pageCount)
-  const pageRows = filteredRows.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE,
-  )
-
   const exportExtras = metricContext
     ? {
         columns: metricColumns,
@@ -128,7 +124,6 @@ export function DataTable({
     : undefined
 
   const toggleSort = (column: string) => {
-    setPage(1)
     setSort((current) =>
       current?.column === column
         ? { column, ascending: !current.ascending }
@@ -152,10 +147,22 @@ export function DataTable({
       )
     }
     if (column === 'Layers') {
-      return <span className={`layer-badge ${String(value).toLowerCase().replace(' ', '-')}`}>{String(value)}</span>
+      return (
+        <span
+          className={`layer-badge ${String(value).toLowerCase().replace(' ', '-')}`}
+        >
+          {String(value)}
+        </span>
+      )
     }
     if (column.toLowerCase() === 'direction') {
-      return <span className={`direction-badge ${String(value).toLowerCase()}`}>{String(value)}</span>
+      return (
+        <span
+          className={`direction-badge ${String(value).toLowerCase()}`}
+        >
+          {String(value)}
+        </span>
+      )
     }
     return String(value || '—')
   }
@@ -167,10 +174,7 @@ export function DataTable({
           <Search size={16} />
           <input
             aria-label="Search table"
-            onChange={(event) => {
-              setSearch(event.target.value)
-              setPage(1)
-            }}
+            onChange={(event) => setSearch(event.target.value)}
             placeholder="Search across all columns..."
             value={search}
           />
@@ -178,10 +182,7 @@ export function DataTable({
         <div className="toolbar-group">
           <select
             aria-label="Select sheet"
-            onChange={(event) => {
-              onSheetChange(event.target.value)
-              setPage(1)
-            }}
+            onChange={(event) => onSheetChange(event.target.value)}
             value={selectedSheet}
           >
             <option value="all">All sheets</option>
@@ -196,10 +197,7 @@ export function DataTable({
               <Filter size={15} />
               <select
                 value={layer}
-                onChange={(event) => {
-                  setLayer(event.target.value)
-                  setPage(1)
-                }}
+                onChange={(event) => setLayer(event.target.value)}
               >
                 <option>All layers</option>
                 <option>Gold</option>
@@ -217,7 +215,9 @@ export function DataTable({
             <div className="export-menu">
               <button
                 className="ghost-button"
-                onClick={() => exportRows(filteredRows, columns, 'csv', exportExtras)}
+                onClick={() =>
+                  exportRows(filteredRows, columns, 'csv', exportExtras)
+                }
                 type="button"
               >
                 <Download size={15} />
@@ -225,7 +225,9 @@ export function DataTable({
               </button>
               <button
                 className="primary-button compact"
-                onClick={() => exportRows(filteredRows, columns, 'xlsx', exportExtras)}
+                onClick={() =>
+                  exportRows(filteredRows, columns, 'xlsx', exportExtras)
+                }
                 type="button"
               >
                 <Download size={15} />
@@ -258,14 +260,17 @@ export function DataTable({
             </tr>
           </thead>
           <tbody>
-            {pageRows.map((row, index) => (
+            {filteredRows.map((row, index) => (
               <tr key={row.id}>
-                <td className="row-number">
-                  {(currentPage - 1) * PAGE_SIZE + index + 1}
-                </td>
-                {selectedSheet === 'all' && <td className="sheet-cell">{row.sheet}</td>}
+                <td className="row-number">{index + 1}</td>
+                {selectedSheet === 'all' && (
+                  <td className="sheet-cell">{row.sheet}</td>
+                )}
                 {columns.map((column) => (
-                  <td key={column} title={String(getValue(row, column) ?? '')}>
+                  <td
+                    key={column}
+                    title={String(getValue(row, column) ?? '')}
+                  >
                     {renderCell(row, column)}
                   </td>
                 ))}
@@ -273,7 +278,7 @@ export function DataTable({
             ))}
           </tbody>
         </table>
-        {!pageRows.length && (
+        {!filteredRows.length && (
           <div className="empty-table">
             <Search size={24} />
             <strong>No matching rows</strong>
@@ -284,29 +289,9 @@ export function DataTable({
 
       <footer className="table-footer">
         <span>
-          Showing {pageRows.length ? (currentPage - 1) * PAGE_SIZE + 1 : 0}–
-          {Math.min(currentPage * PAGE_SIZE, filteredRows.length)} of{' '}
-          {filteredRows.length} rows
+          {filteredRows.length} of {rows.length}{' '}
+          row{rows.length === 1 ? '' : 's'}
         </span>
-        <div className="pagination">
-          <button
-            disabled={currentPage === 1}
-            onClick={() => setPage((value) => Math.max(1, value - 1))}
-            type="button"
-          >
-            <ChevronLeft size={15} />
-          </button>
-          <span>
-            Page {currentPage} of {pageCount}
-          </span>
-          <button
-            disabled={currentPage === pageCount}
-            onClick={() => setPage((value) => Math.min(pageCount, value + 1))}
-            type="button"
-          >
-            <ChevronRight size={15} />
-          </button>
-        </div>
       </footer>
     </section>
   )
