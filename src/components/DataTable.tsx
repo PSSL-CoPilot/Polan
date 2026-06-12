@@ -57,6 +57,7 @@ const valueForColumn = (row: ProcessedRow, column: string) => {
   if (column === 'Table Name') return row.tableName
   if (column === 'MDR Availability') return row.mdrAvailability
   if (column === 'Layers') return row.layer
+  if (column === 'Issue?') return isImpactedAssetTypeMismatch(row) ? 'Yes' : 'No'
   return row.original[column] ?? ''
 }
 
@@ -322,6 +323,17 @@ export function DataTable({
         </a>
       ) : (
         content
+      )
+    }
+    if (column === 'Issue?') {
+      const flagged = isImpactedAssetTypeMismatch(item.row)
+      return (
+        <span
+          className={`issue-badge ${flagged ? 'yes' : 'no'}`}
+          title={flagged ? IMPACTED_ASSET_TYPE_WARNING : undefined}
+        >
+          {flagged ? 'Yes' : 'No'}
+        </span>
       )
     }
     const value = valueForColumn(item.row, column)

@@ -11,6 +11,7 @@ export const DERIVED_COLUMNS = [
   'Table Name',
   'MDR Availability',
   'Layers',
+  'Issue?',
 ] as const
 
 export type RequiredColumn = (typeof REQUIRED_COLUMNS)[number]

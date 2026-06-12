@@ -163,7 +163,12 @@ describe('workbook enrichment', () => {
     expect(worksheet?.A3.s.fill.fgColor.rgb).toBe('FFF2CC')
     expect(worksheet?.E3.s.fill.fgColor.rgb).toBe('FFF2CC')
     expect(worksheet?.J3.s.fill.fgColor.rgb).toBe('FFF2CC')
-    expect(worksheet?.['!autofilter']).toEqual({ ref: 'A1:J1' })
+    // "Issue?" is the rightmost column (K) and tracks the same validation.
+    expect(worksheet?.K1.v).toBe('Issue?')
+    expect(worksheet?.K2.v).toBe('No')
+    expect(worksheet?.K3.v).toBe('Yes')
+    expect(worksheet?.K3.s.fill.fgColor.rgb).toBe('FFF2CC')
+    expect(worksheet?.['!autofilter']).toEqual({ ref: 'A1:K1' })
   })
 
   it('exports workbook and metric hyperlinks with borders and a lineage link', async () => {

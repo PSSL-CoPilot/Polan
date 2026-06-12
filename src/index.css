@@ -2161,6 +2161,27 @@ tbody tr:hover td {
   vertical-align: middle;
 }
 
+/* "Issue?" column badge — shares the validation yellow when flagged. */
+.issue-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 7px;
+  border-radius: 5px;
+  font-size: 8.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.issue-badge.yes {
+  color: #8a5a00;
+  background: #f7d774;
+}
+
+.issue-badge.no {
+  color: #777480;
+  background: #f0eef2;
+}
+
 .row-number {
   min-width: 46px;
   width: 46px;

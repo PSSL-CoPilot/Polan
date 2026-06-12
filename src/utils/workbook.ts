@@ -257,6 +257,8 @@ export function processedRowToRecord(
   record['Table Name'] = row.tableName
   record['MDR Availability'] = row.mdrAvailability ? 'Yes' : ''
   record.Layers = row.layer
+  // Same validation that drives the yellow row highlight, surfaced as a column.
+  record['Issue?'] = isImpactedAssetTypeMismatch(row) ? 'Yes' : 'No'
   return record
 }
 
