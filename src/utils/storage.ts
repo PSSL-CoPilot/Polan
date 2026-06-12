@@ -51,6 +51,14 @@ function sanitizeMetric(value: unknown): MetricRecord | null {
   const name = asString(raw.name).trim()
   const measureName = asString(raw.measureName).trim()
   if (!name || !measureName) return null
+  const immediateTables =
+    raw.immediateTables && typeof raw.immediateTables === 'object'
+      ? Object.fromEntries(
+          Object.entries(raw.immediateTables as Record<string, unknown>)
+            .map(([sheet, table]) => [sheet.trim(), asString(table).trim()])
+            .filter(([sheet, table]) => Boolean(sheet && table)),
+        )
+      : {}
   return {
     id: asString(raw.id) || createId(),
     name,
@@ -62,6 +70,7 @@ function sanitizeMetric(value: unknown): MetricRecord | null {
           (sheet): sheet is string => typeof sheet === 'string',
         )
       : [],
+    immediateTables,
   }
 }
 

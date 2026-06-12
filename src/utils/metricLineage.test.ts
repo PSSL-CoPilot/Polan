@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { MetricRecord, OriginalRow } from '../types'
-import { buildLineage } from './lineage'
+import { buildFocusedView, buildLineage } from './lineage'
 import {
   buildMetricTableContext,
   buildMetricTableEntries,
@@ -37,6 +37,7 @@ const metric: MetricRecord = {
   measureName: 'SUM(net_revenue)',
   atlanLink: 'https://example.atlan.com/metric/net-revenue',
   connectedSheets: ['Sales'],
+  immediateTables: {},
 }
 
 describe('metric lineage insertion', () => {
@@ -94,6 +95,144 @@ describe('metric lineage insertion', () => {
       'Measure Name': 'SUM(net_revenue)',
       'Report 1': 'Revenue Report',
     })
+  })
+
+  it('routes other upstream tables through the selected Immediate Table', () => {
+    const sheet = processSheet(
+      'Sales',
+      [
+        sheetRows[0],
+        {
+          ...sheetRows[0],
+          'Impacted Asset': 'bq_customers',
+          'Qualified Name': 'a/b/c/proj/sales_USL/customers',
+        },
+        ...sheetRows.slice(1),
+      ],
+      columns,
+    )
+    const configuredMetric: MetricRecord = {
+      ...metric,
+      immediateTables: { Sales: ' BQ_ORDERS ' },
+    }
+    const graph = buildLineage(sheet.rows, [configuredMetric])
+    const metricAsset = Array.from(graph.assets.values()).find(
+      (asset) => asset.type === 'metric',
+    )
+    const relationKeys = graph.relations.map(
+      (relation) => `${relation.source}->${relation.target}`,
+    )
+
+    expect(metricAsset?.upstreamIds).toEqual(['bq-orders'])
+    expect(relationKeys).toContain('bq-customers->bq-orders')
+    expect(relationKeys).toContain(`bq-orders->${metricAsset!.id}`)
+    expect(relationKeys).toContain(`${metricAsset!.id}->sales-model`)
+    expect(relationKeys).not.toContain('bq-orders->sales-model')
+    expect(relationKeys).not.toContain(`bq-customers->${metricAsset!.id}`)
+    expect(new Set(relationKeys).size).toBe(relationKeys.length)
+
+    const focused = buildFocusedView(
+      'sales-model',
+      graph.assets,
+      graph.relations,
+    )
+    expect(focused.visibleAssetIds).toEqual(
+      new Set([
+        'sales-model',
+        metricAsset!.id,
+        'bq-orders',
+        'bq-customers',
+        'sales-dataset',
+        'revenue-report',
+      ]),
+    )
+  })
+
+  it('keeps existing metric routing when the saved Immediate Table is missing', () => {
+    const sheet = processSheet(
+      'Sales',
+      [
+        sheetRows[0],
+        {
+          ...sheetRows[0],
+          'Impacted Asset': 'bq_customers',
+          'Qualified Name': 'a/b/c/proj/sales_USL/customers',
+        },
+      ],
+      columns,
+    )
+    const graph = buildLineage(sheet.rows, [
+      {
+        ...metric,
+        immediateTables: { Sales: 'removed_table' },
+      },
+    ])
+    const metricAsset = Array.from(graph.assets.values()).find(
+      (asset) => asset.type === 'metric',
+    )
+
+    expect(metricAsset?.upstreamIds).toEqual([
+      'bq-orders',
+      'bq-customers',
+    ])
+  })
+
+  it('applies a separate Immediate Table for every linked sheet', () => {
+    const sales = processSheet(
+      'Sales',
+      [
+        sheetRows[0],
+        {
+          ...sheetRows[0],
+          'Impacted Asset': 'bq_customers',
+        },
+      ],
+      columns,
+    )
+    const marketing = processSheet(
+      'Marketing',
+      [
+        {
+          ...sheetRows[0],
+          'Source Asset': 'Campaign Model',
+          'Impacted Asset': 'bq_campaigns',
+        },
+        {
+          ...sheetRows[0],
+          'Source Asset': 'Campaign Model',
+          'Impacted Asset': 'bq_channels',
+        },
+      ],
+      columns,
+    )
+    const graph = buildLineage([...sales.rows, ...marketing.rows], [
+      {
+        ...metric,
+        connectedSheets: ['Sales', 'Marketing'],
+        immediateTables: {
+          Sales: 'bq_orders',
+          Marketing: 'bq_campaigns',
+        },
+      },
+    ])
+    const metricAsset = Array.from(graph.assets.values()).find(
+      (asset) => asset.type === 'metric',
+    )
+
+    expect(metricAsset?.upstreamIds).toEqual([
+      'bq-orders',
+      'bq-campaigns',
+    ])
+    expect(graph.assets.get('bq-orders')?.upstreamIds).toEqual([
+      'bq-customers',
+    ])
+    expect(graph.assets.get('bq-campaigns')?.upstreamIds).toEqual([
+      'bq-channels',
+    ])
+    expect(metricAsset?.downstreamIds).toEqual([
+      'sales-model',
+      'campaign-model',
+    ])
   })
 
   it('builds independent processed-data contexts for every metric', () => {

@@ -116,6 +116,7 @@ export function useProject() {
         atlanLink: draft.atlanLink?.trim() || undefined,
         description: draft.description?.trim() || undefined,
         connectedSheets: [],
+        immediateTables: {},
       }
       updateView(viewId, (view) => ({
         ...view,
@@ -192,6 +193,28 @@ export function useProject() {
     [],
   )
 
+  const setImmediateTable = useCallback(
+    (metricId: string, sheet: string, table: string | null) => {
+      const sheetName = sheet.trim()
+      if (!sheetName) return
+      setProject((current) => ({
+        ...current,
+        views: current.views.map((view) => ({
+          ...view,
+          metrics: view.metrics.map((metric) => {
+            if (metric.id !== metricId) return metric
+            const immediateTables = { ...(metric.immediateTables ?? {}) }
+            const value = table?.trim()
+            if (value) immediateTables[sheetName] = value
+            else delete immediateTables[sheetName]
+            return { ...metric, immediateTables }
+          }),
+        })),
+      }))
+    },
+    [],
+  )
+
   const replaceProject = useCallback((next: ProjectState) => {
     setProject(next)
   }, [])
@@ -210,6 +233,7 @@ export function useProject() {
     selectMetric,
     setConnectedSheets,
     toggleConnectedSheet,
+    setImmediateTable,
     replaceProject,
   }
 }
@@ -223,11 +247,17 @@ function updateMetricSheets(
     ...current,
     views: current.views.map((view) => ({
       ...view,
-      metrics: view.metrics.map((metric) =>
-        metric.id === metricId
-          ? { ...metric, connectedSheets: mutate(metric.connectedSheets) }
-          : metric,
-      ),
+      metrics: view.metrics.map((metric) => {
+        if (metric.id !== metricId) return metric
+        const connectedSheets = mutate(metric.connectedSheets)
+        const connected = new Set(connectedSheets)
+        const immediateTables = Object.fromEntries(
+          Object.entries(metric.immediateTables ?? {}).filter(([sheet]) =>
+            connected.has(sheet),
+          ),
+        )
+        return { ...metric, connectedSheets, immediateTables }
+      }),
     })),
   }))
 }

@@ -2,23 +2,31 @@ import {
   AlertTriangle,
   ArrowRight,
   Check,
+  ChevronDown,
   ExternalLink,
   FileSpreadsheet,
   GitBranch,
   Link2,
   Pencil,
+  Search,
   Sigma,
   Table2,
   Trash2,
   UploadCloud,
 } from 'lucide-react'
-import { useMemo } from 'react'
+import { useState } from 'react'
 import type { MetricRecord, SheetData } from '../types'
+import {
+  immediateTableExists,
+  immediateTableOptions,
+  metricImmediateTable,
+} from '../utils/metricImmediateTable'
 
 interface MetricWorkspaceProps {
   metric: MetricRecord
   sheets: SheetData[]
   onToggleSheet: (sheet: string) => void
+  onSetImmediateTable: (sheet: string, table: string | null) => void
   onDisconnectMissing: (sheet: string) => void
   onEdit: () => void
   onDelete: () => void
@@ -26,10 +34,128 @@ interface MetricWorkspaceProps {
   onGoToUpload: () => void
 }
 
+function ImmediateTableSelect({
+  options,
+  selected,
+  sheetName,
+  onChange,
+}: {
+  options: string[]
+  selected: string | undefined
+  sheetName: string
+  onChange: (value: string | null) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const normalizedQuery = query.trim().toLowerCase()
+  const filteredOptions = options.filter((option) =>
+    option.toLowerCase().includes(normalizedQuery),
+  )
+  const missing = Boolean(selected) && !immediateTableExists(options, selected)
+
+  return (
+    <div
+      className="immediate-table-select"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setOpen(false)
+          setQuery('')
+        }
+      }}
+    >
+      <button
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-label={`Select Immediate Table for ${sheetName}`}
+        className={`immediate-table-trigger ${missing ? 'missing' : ''}`}
+        onClick={() => setOpen((current) => !current)}
+        type="button"
+      >
+        <span>{selected || 'Select Immediate Table'}</span>
+        <ChevronDown size={14} />
+      </button>
+
+      {open && (
+        <div className="immediate-table-menu">
+          <label className="immediate-table-search">
+            <Search size={13} />
+            <input
+              aria-label={`Search Immediate Tables for ${sheetName}`}
+              autoFocus
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  setOpen(false)
+                  setQuery('')
+                }
+              }}
+              placeholder="Search impacted assets..."
+              value={query}
+            />
+          </label>
+          <div
+            aria-label={`Immediate Table options for ${sheetName}`}
+            className="immediate-table-options"
+            role="listbox"
+          >
+            {selected && (
+              <button
+                className="immediate-table-clear"
+                onClick={() => {
+                  onChange(null)
+                  setOpen(false)
+                  setQuery('')
+                }}
+                type="button"
+              >
+                Clear selection
+              </button>
+            )}
+            {filteredOptions.map((option) => {
+              const active =
+                selected?.trim().toLowerCase() === option.toLowerCase()
+              return (
+                <button
+                  aria-selected={active}
+                  className={active ? 'selected' : ''}
+                  key={option}
+                  onClick={() => {
+                    onChange(option)
+                    setOpen(false)
+                    setQuery('')
+                  }}
+                  role="option"
+                  type="button"
+                >
+                  <span>{option}</span>
+                  {active && <Check size={13} />}
+                </button>
+              )
+            })}
+            {!filteredOptions.length && (
+              <span className="immediate-table-empty">
+                No matching impacted assets
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {missing && (
+        <span className="immediate-table-warning">
+          <AlertTriangle size={12} />
+          Saved table is missing from this sheet.
+        </span>
+      )}
+    </div>
+  )
+}
+
 export function MetricWorkspace({
   metric,
   sheets,
   onToggleSheet,
+  onSetImmediateTable,
   onDisconnectMissing,
   onEdit,
   onDelete,
@@ -44,19 +170,24 @@ export function MetricWorkspace({
   const connectedCount = metric.connectedSheets.filter((name) =>
     sheetNames.has(name),
   ).length
+  const connectedSheets = metric.connectedSheets
+    .map((name) => validSheets.find((sheet) => sheet.name === name))
+    .filter((sheet): sheet is SheetData => Boolean(sheet))
 
-  const tablesBySheet = useMemo(() => {
-    const map = new Map<string, string[]>()
-    validSheets.forEach((sheet) => {
-      const tables = Array.from(
-        new Set(
-          sheet.rows.map((row) => row.sourceAsset).filter(Boolean),
-        ),
-      )
-      map.set(sheet.name, tables)
-    })
-    return map
-  }, [validSheets])
+  const tablesBySheet = new Map(
+    validSheets.map((sheet) => [
+      sheet.name,
+      Array.from(
+        new Set(sheet.rows.map((row) => row.sourceAsset).filter(Boolean)),
+      ),
+    ]),
+  )
+  const immediateOptionsBySheet = new Map(
+    validSheets.map((sheet) => [
+      sheet.name,
+      immediateTableOptions(sheet),
+    ]),
+  )
 
   return (
     <div className="metric-workspace">
@@ -231,6 +362,52 @@ export function MetricWorkspace({
           </div>
         )}
       </section>
+
+      {connectedSheets.length > 0 && (
+        <section className="connect-card immediate-table-card">
+          <div className="section-title-row">
+            <div>
+              <span className="eyebrow">Metric routing</span>
+              <h2>Immediate Tables</h2>
+              <p className="section-sub">
+                Choose the impacted table that should feed directly into this
+                metric for each connected sheet.
+              </p>
+            </div>
+          </div>
+
+          <div className="immediate-table-grid">
+            {connectedSheets.map((sheet) => {
+              const selected = metricImmediateTable(metric, sheet.name)
+              const options = immediateOptionsBySheet.get(sheet.name) ?? []
+              return (
+                <div className="immediate-table-config" key={sheet.name}>
+                  <div className="immediate-table-config-head">
+                    <span className="sheet-tile-icon">
+                      <FileSpreadsheet size={16} />
+                    </span>
+                    <div>
+                      <strong>{sheet.name}</strong>
+                      <small>
+                        {options.length} unique impacted asset
+                        {options.length === 1 ? '' : 's'}
+                      </small>
+                    </div>
+                  </div>
+                  <ImmediateTableSelect
+                    onChange={(table) =>
+                      onSetImmediateTable(sheet.name, table)
+                    }
+                    options={options}
+                    selected={selected}
+                    sheetName={sheet.name}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
     </div>
   )
 }

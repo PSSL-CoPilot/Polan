@@ -6,6 +6,10 @@ import type {
   ProcessedRow,
   Relation,
 } from '../types'
+import {
+  metricImmediateTable,
+  resolveImmediateUpstreamAsset,
+} from './metricImmediateTable'
 
 /**
  * Lineage engine
@@ -193,7 +197,7 @@ function chainDatasetsToReports(
  * workbook sheets. Existing upstream edges into those tables are rerouted
  * through the metric; everything else is untouched.
  */
-function insertMetricNodes(
+function insertMetricNodesWithoutImmediateTables(
   rows: ProcessedRow[],
   metrics: MetricRecord[],
   assets: Map<string, AssetRecord>,
@@ -264,6 +268,178 @@ function insertMetricNodes(
     metricIds.forEach((metricId) =>
       push({ source: metricId, target: tableId, direction: 'upstream' }),
     )
+  })
+
+  return next
+}
+
+interface MetricTableRoute {
+  metricId: string
+  immediateId?: string
+  upstreamIds: Set<string>
+}
+
+function insertMetricNodes(
+  rows: ProcessedRow[],
+  metrics: MetricRecord[],
+  assets: Map<string, AssetRecord>,
+  relations: Relation[],
+): Relation[] {
+  if (
+    !metrics.some((metric) =>
+      Object.values(metric.immediateTables ?? {}).some((value) =>
+        value.trim(),
+      ),
+    )
+  ) {
+    return insertMetricNodesWithoutImmediateTables(
+      rows,
+      metrics,
+      assets,
+      relations,
+    )
+  }
+
+  const sheetTables = new Map<string, Set<string>>()
+  const upstreamBySheetTable = new Map<string, Set<string>>()
+  const sheetTableKey = (sheet: string, tableId: string) =>
+    `${sheet}\u0000${tableId}`
+
+  rows.forEach((row) => {
+    if (!row.sourceAsset) return
+    const tableId = nodeId(row.sourceAsset)
+    if (!assets.has(tableId)) return
+    const tables = sheetTables.get(row.sheet) ?? new Set<string>()
+    tables.add(tableId)
+    sheetTables.set(row.sheet, tables)
+
+    if (
+      row.direction.trim().toLowerCase() !== 'upstream' ||
+      !row.impactedAsset
+    ) {
+      return
+    }
+    const key = sheetTableKey(row.sheet, tableId)
+    const upstreamIds = upstreamBySheetTable.get(key) ?? new Set<string>()
+    upstreamIds.add(nodeId(row.impactedAsset))
+    upstreamBySheetTable.set(key, upstreamIds)
+  })
+
+  const routesByTable = new Map<string, MetricTableRoute[]>()
+  metrics.forEach((metric) => {
+    const metricId = `metric-${nodeId(metric.id) || metric.id}`
+    let connected = false
+
+    metric.connectedSheets.forEach((sheet) => {
+      const selected = metricImmediateTable(metric, sheet)
+      const resolved = resolveImmediateUpstreamAsset(rows, sheet, selected)
+      const immediateId = resolved ? nodeId(resolved) : undefined
+
+      sheetTables.get(sheet)?.forEach((tableId) => {
+        connected = true
+        const upstreamIds =
+          upstreamBySheetTable.get(sheetTableKey(sheet, tableId)) ??
+          new Set<string>()
+        const routes = routesByTable.get(tableId) ?? []
+        const safeImmediateId =
+          immediateId && immediateId !== tableId && assets.has(immediateId)
+            ? immediateId
+            : undefined
+        const existing = routes.find(
+          (route) =>
+            route.metricId === metricId &&
+            route.immediateId === safeImmediateId,
+        )
+        if (existing) {
+          upstreamIds.forEach((id) => existing.upstreamIds.add(id))
+        } else {
+          routes.push({
+            metricId,
+            immediateId: safeImmediateId,
+            upstreamIds: new Set(upstreamIds),
+          })
+        }
+        routesByTable.set(tableId, routes)
+      })
+    })
+
+    if (connected) {
+      assets.set(metricId, {
+        ...emptyAsset(metric.name, 'metric'),
+        id: metricId,
+        metric,
+      })
+    }
+  })
+
+  if (!routesByTable.size) return relations
+
+  const next: Relation[] = []
+  const seen = new Set<string>()
+  const push = (relation: Relation) => {
+    const key = `${relation.source}->${relation.target}`
+    if (seen.has(key) || relation.source === relation.target) return
+    seen.add(key)
+    next.push(relation)
+  }
+
+  relations.forEach((relation) => {
+    const routes =
+      relation.direction === 'upstream'
+        ? routesByTable.get(relation.target)
+        : undefined
+    if (!routes?.length) {
+      push(relation)
+      return
+    }
+
+    let rerouted = false
+    routes.forEach((route) => {
+      const applies =
+        !route.immediateId || route.upstreamIds.has(relation.source)
+      if (!applies) return
+      rerouted = true
+
+      if (route.immediateId) {
+        if (relation.source !== route.immediateId) {
+          push({
+            source: relation.source,
+            target: route.immediateId,
+            direction: 'upstream',
+          })
+        }
+        push({
+          source: route.immediateId,
+          target: route.metricId,
+          direction: 'upstream',
+        })
+      } else {
+        push({
+          source: relation.source,
+          target: route.metricId,
+          direction: 'upstream',
+        })
+      }
+    })
+
+    if (!rerouted) push(relation)
+  })
+
+  routesByTable.forEach((routes, tableId) => {
+    routes.forEach((route) => {
+      if (route.immediateId) {
+        push({
+          source: route.immediateId,
+          target: route.metricId,
+          direction: 'upstream',
+        })
+      }
+      push({
+        source: route.metricId,
+        target: tableId,
+        direction: 'upstream',
+      })
+    })
   })
 
   return next
@@ -457,7 +633,7 @@ export function pickDefaultFocus(assets: Map<string, AssetRecord>): string | nul
 // ── Focused, anchored layout with "show 3 + Show more" grouping ──────────────
 
 const FOCUS_BATCH = 3
-const MAX_DEPTH = 2
+const MAX_DEPTH = 3
 const COLUMN_PITCH = 372
 const ROW_GAP = 104
 

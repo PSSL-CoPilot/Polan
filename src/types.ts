@@ -96,8 +96,10 @@ export interface MetricRecord {
   measureName: string
   atlanLink?: string
   description?: string
-  /** Workbook sheet names — each sheet represents one Power BI table. */
+  /** Workbook sheet names; each sheet represents one Power BI table. */
   connectedSheets: string[]
+  /** Sheet name -> selected upstream table placed immediately before the metric. */
+  immediateTables: Record<string, string>
 }
 
 export interface ViewRecord {
