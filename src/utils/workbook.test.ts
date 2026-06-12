@@ -62,9 +62,14 @@ describe('workbook enrichment', () => {
 
   it('reads and processes every sheet in a real workbook', async () => {
     const workbook = XLSX.utils.book_new()
+    const primarySheet = XLSX.utils.json_to_sheet([row])
+    primarySheet.A2.l = {
+      Target: 'https://example.atlan.com/assets/customer',
+      Tooltip: 'Open customer asset',
+    }
     XLSX.utils.book_append_sheet(
       workbook,
-      XLSX.utils.json_to_sheet([row]),
+      primarySheet,
       'Primary',
     )
     XLSX.utils.book_append_sheet(
@@ -93,6 +98,10 @@ describe('workbook enrichment', () => {
     ])
     expect(parsed.sheets.flatMap((sheet) => sheet.rows)).toHaveLength(2)
     expect(parsed.sheets[0].rows[0].layer).toBe('Gold')
+    expect(parsed.sheets[0].rows[0].hyperlinks?.['Source Asset']).toEqual({
+      target: 'https://example.atlan.com/assets/customer',
+      tooltip: 'Open customer asset',
+    })
   })
 
   it('de-duplicates graph nodes and repeated relationships', () => {
@@ -155,5 +164,49 @@ describe('workbook enrichment', () => {
     expect(worksheet?.E3.s.fill.fgColor.rgb).toBe('FFF2CC')
     expect(worksheet?.J3.s.fill.fgColor.rgb).toBe('FFF2CC')
     expect(worksheet?.['!autofilter']).toEqual({ ref: 'A1:J1' })
+  })
+
+  it('exports workbook and metric hyperlinks with borders and a lineage link', async () => {
+    const processed = processSheet('Lineage', [row], columns)
+    processed.rows[0].hyperlinks = {
+      'Source Asset': {
+        target: 'https://example.atlan.com/assets/customer',
+      },
+    }
+
+    await exportRows(processed.rows, columns, undefined, [
+      {
+        metricName: 'Unique Sales',
+        rows: processed.rows,
+        columns: ['Measure Name', ...columns],
+        extras: {
+          columns: ['Measure Name'],
+          valueFor: () => ({ 'Measure Name': 'Unique Sales Measure' }),
+          hyperlinkFor: (_, column) =>
+            column === 'Measure Name'
+              ? { target: 'https://example.atlan.com/metrics/unique-sales' }
+              : undefined,
+        },
+        lineageUrl:
+          'https://example.com/Polan/#/lineage?metricId=metric-1',
+      },
+    ])
+
+    const worksheet = exportCapture.workbook?.Sheets['Unique Sales']
+    expect(worksheet?.A2.l.Target).toBe(
+      'https://example.atlan.com/metrics/unique-sales',
+    )
+    expect(worksheet?.B2.l.Target).toBe(
+      'https://example.atlan.com/assets/customer',
+    )
+    expect(worksheet?.A1.s.border.top.style).toBe('thin')
+    expect(worksheet?.E2.s.border.right.style).toBe('thin')
+    expect(worksheet?.A5.v).toBe('To view lineage for this metric,')
+    expect(worksheet?.B5.v).toBe('click here')
+    expect(worksheet?.B5.l.Target).toBe(
+      'https://example.com/Polan/#/lineage?metricId=metric-1',
+    )
+    expect(worksheet?.B5.s.border.bottom.style).toBe('thin')
+    expect(worksheet?.['!autofilter']).toEqual({ ref: 'A1:E1' })
   })
 })

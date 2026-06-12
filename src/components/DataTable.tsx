@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Download,
   Filter,
+  Link2,
   Search,
   Sigma,
   SlidersHorizontal,
@@ -16,10 +17,17 @@ import { DERIVED_COLUMNS } from '../types'
 import {
   DEFAULT_METRIC_COLUMNS,
   metricColumnsForEntries,
+  metricHyperlinkForRow,
   metricValueForRow,
   type MetricTableEntry,
   type MetricTableContext,
 } from '../utils/metricData'
+import {
+  hyperlinkForMatchingValue,
+  hyperlinkForOriginalColumn,
+  safeBrowserHyperlink,
+} from '../utils/hyperlinks'
+import { buildMetricLineageUrl } from '../utils/lineageLink'
 import {
   IMPACTED_ASSET_TYPE_WARNING,
   isImpactedAssetTypeMismatch,
@@ -40,6 +48,7 @@ interface DataTableProps {
   metricEntries?: MetricTableEntry[]
   /** When set, only rows matching this direction are shown. */
   directionFilter?: 'upstream' | 'downstream'
+  activeWorkbookId?: string | null
 }
 
 const valueForColumn = (row: ProcessedRow, column: string) => {
@@ -79,6 +88,8 @@ const extrasForContext = (
     })
     return values
   },
+  hyperlinkFor: (row: ProcessedRow, column: string) =>
+    metricHyperlinkForRow(context, row.id, column),
 })
 
 export function DataTable({
@@ -88,10 +99,12 @@ export function DataTable({
   onSheetChange,
   metricEntries = [],
   directionFilter,
+  activeWorkbookId,
 }: DataTableProps) {
   const [search, setSearch] = useState('')
   const [layer, setLayer] = useState('All layers')
   const [selectedMetricId, setSelectedMetricId] = useState('all')
+  const [includeLineageLink, setIncludeLineageLink] = useState(false)
   const [sort, setSort] = useState<{ column: string; ascending: boolean } | null>(
     null,
   )
@@ -179,6 +192,14 @@ export function DataTable({
         : valueForColumn(item.row, column),
     [metricColumns],
   )
+  const getHyperlink = useCallback(
+    (item: TableRow, column: string) =>
+      metricColumns.includes(column)
+        ? metricHyperlinkForRow(item.metricContext, item.row.id, column)
+        : hyperlinkForOriginalColumn(item.row, column) ??
+          hyperlinkForMatchingValue(item.row, getValue(item, column)),
+    [getValue, metricColumns],
+  )
 
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -245,10 +266,23 @@ export function DataTable({
                 entry.metric.name,
                 entry.metric.measureName,
               ),
+              lineageUrl: includeLineageLink
+                ? buildMetricLineageUrl(
+                    entry.metric.id,
+                    activeWorkbookId,
+                  )
+                : undefined,
             }
           })
         : undefined,
-    [activeMetricEntries, baseColumns, filteredRows, hasMetrics],
+    [
+      activeMetricEntries,
+      activeWorkbookId,
+      baseColumns,
+      filteredRows,
+      hasMetrics,
+      includeLineageLink,
+    ],
   )
 
   const toggleSort = (column: string) => {
@@ -271,7 +305,24 @@ export function DataTable({
       )
       if (!value) return <span className="metric-cell-empty" />
       const highlight = column === 'Metric Name' || column === 'Measure Name'
-      return highlight ? <span className="metric-cell">{value}</span> : value
+      const hyperlink = safeBrowserHyperlink(getHyperlink(item, column))
+      const content = highlight ? (
+        <span className="metric-cell">{value}</span>
+      ) : (
+        value
+      )
+      return hyperlink ? (
+        <a
+          className="table-cell-link"
+          href={hyperlink}
+          rel="noreferrer"
+          target="_blank"
+        >
+          {content}
+        </a>
+      ) : (
+        content
+      )
     }
     const value = valueForColumn(item.row, column)
     if (column === 'MDR Availability') {
@@ -299,7 +350,20 @@ export function DataTable({
         </span>
       )
     }
-    return String(value || '—')
+    const text = String(value || '—')
+    const hyperlink = safeBrowserHyperlink(getHyperlink(item, column))
+    return hyperlink ? (
+      <a
+        className="table-cell-link"
+        href={hyperlink}
+        rel="noreferrer"
+        target="_blank"
+      >
+        {text}
+      </a>
+    ) : (
+      text
+    )
   }
 
   return (
@@ -371,6 +435,30 @@ export function DataTable({
                 <option>Raw</option>
                 <option>No Layers</option>
               </select>
+            </label>
+          )}
+          {includeDerived && (
+            <label
+              className={`export-link-toggle${hasMetrics ? '' : ' is-disabled'}`}
+              title={
+                hasMetrics
+                  ? 'Add a metric-specific lineage link to each exported sheet'
+                  : 'Create a metric to include lineage links'
+              }
+            >
+              <input
+                checked={includeLineageLink}
+                disabled={!hasMetrics}
+                onChange={(event) =>
+                  setIncludeLineageLink(event.target.checked)
+                }
+                type="checkbox"
+              />
+              <span aria-hidden="true" className="toggle-track">
+                <span />
+              </span>
+              <Link2 size={14} />
+              Include lineage link in Excel export
             </label>
           )}
           <button className="ghost-button" type="button">

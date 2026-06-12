@@ -1,9 +1,11 @@
 import type {
   AssetRecord,
+  CellHyperlink,
   CellValue,
   MetricRecord,
   ProcessedRow,
 } from '../types'
+import { hyperlinkForAsset } from './hyperlinks'
 
 /**
  * Enrichment of the Processed Data table for the active metric:
@@ -15,6 +17,7 @@ export interface MetricTableContext {
   columns: string[]
   /** row id → values for the metric columns. */
   byRowId: Map<string, Record<string, string>>
+  hyperlinksByRowId: Map<string, Record<string, CellHyperlink>>
   /** sheets the metric is connected to, in connection order. */
   connectedSheets: string[]
 }
@@ -39,6 +42,10 @@ export function buildMetricTableContext(
 
   const connected = new Set(metric.connectedSheets)
   const byRowId = new Map<string, Record<string, string>>()
+  const hyperlinksByRowId = new Map<
+    string,
+    Record<string, CellHyperlink>
+  >()
   let maxReports = 0
 
   const nodeId = (name: string) =>
@@ -73,6 +80,20 @@ export function buildMetricTableContext(
       values[`Report ${index + 1}`] = report.name
     })
     byRowId.set(row.id, values)
+
+    const hyperlinks: Record<string, CellHyperlink> = {}
+    const datasetHyperlink = hyperlinkForAsset(datasets[0])
+    if (datasetHyperlink) hyperlinks.Dataset = datasetHyperlink
+    reports.forEach((report, index) => {
+      const hyperlink = hyperlinkForAsset(report)
+      if (hyperlink) hyperlinks[`Report ${index + 1}`] = hyperlink
+    })
+    if (metric.atlanLink) {
+      hyperlinks['Measure Name'] = { target: metric.atlanLink }
+    }
+    if (Object.keys(hyperlinks).length) {
+      hyperlinksByRowId.set(row.id, hyperlinks)
+    }
   })
 
   if (!byRowId.size) return null
@@ -85,6 +106,7 @@ export function buildMetricTableContext(
     metric,
     columns: [...reportColumns, 'Dataset', 'Metric Name', 'Measure Name'],
     byRowId,
+    hyperlinksByRowId,
     connectedSheets: metric.connectedSheets,
   }
 }
@@ -122,4 +144,12 @@ export function metricValueForRow(
   column: string,
 ): CellValue {
   return context?.byRowId.get(rowId)?.[column] ?? ''
+}
+
+export function metricHyperlinkForRow(
+  context: MetricTableContext | null,
+  rowId: string,
+  column: string,
+): CellHyperlink | undefined {
+  return context?.hyperlinksByRowId.get(rowId)?.[column]
 }

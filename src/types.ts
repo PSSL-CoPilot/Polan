@@ -26,10 +26,18 @@ export type AssetType =
 export type CellValue = string | number | boolean | null | undefined
 export type OriginalRow = Record<string, CellValue>
 
+export interface CellHyperlink {
+  target: string
+  tooltip?: string
+}
+
+export type RowHyperlinks = Record<string, CellHyperlink>
+
 export interface ProcessedRow {
   id: string
   sheet: string
   original: OriginalRow
+  hyperlinks?: RowHyperlinks
   sourceAsset: string
   impactedAsset: string
   impactedAssetType?: string

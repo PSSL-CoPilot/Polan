@@ -1,15 +1,22 @@
 import {
   DERIVED_COLUMNS,
   REQUIRED_COLUMNS,
+  type CellHyperlink,
   type CellValue,
   type Layer,
   type OriginalRow,
   type ProcessedRow,
   type RequiredColumn,
+  type RowHyperlinks,
   type SheetData,
   type WorkbookData,
 } from '../types'
+import {
+  hyperlinkForMatchingValue,
+  hyperlinkForOriginalColumn,
+} from './hyperlinks'
 import { isImpactedAssetTypeMismatch } from './processedDataValidation'
+import type { CellObject, WorkSheet } from 'xlsx'
 
 const normalizedHeader = (value: string) =>
   value.trim().toLowerCase().replace(/\s+/g, ' ')
@@ -90,6 +97,7 @@ export function processSheet(
   name: string,
   inputRows: OriginalRow[],
   originalColumns: string[],
+  hyperlinksByRow?: Map<number, RowHyperlinks>,
 ): SheetData {
   const columns = originalColumns.filter(Boolean)
   const mapping = resolveColumns(columns)
@@ -133,11 +141,15 @@ export function processSheet(
       const impactedAssetType = impactedAssetTypeCol
         ? displayValue(original[impactedAssetTypeCol]) || undefined
         : undefined
+      const sourceRow = (original as OriginalRow & { __rowNum__?: number })
+        .__rowNum__
 
       return {
         id: `${name}-${index}`,
         sheet: name,
         original,
+        hyperlinks:
+          sourceRow === undefined ? undefined : hyperlinksByRow?.get(sourceRow),
         sourceAsset,
         impactedAsset,
         impactedAssetType,
@@ -153,6 +165,37 @@ export function processSheet(
     })
 
   return { name, originalColumns: columns, rows, errors, warnings }
+}
+
+function extractWorksheetHyperlinks(
+  XLSX: typeof import('xlsx'),
+  worksheet: WorkSheet,
+  headerRow: CellValue[],
+): Map<number, RowHyperlinks> {
+  const linksByRow = new Map<number, RowHyperlinks>()
+  if (!worksheet['!ref']) return linksByRow
+
+  const range = XLSX.utils.decode_range(worksheet['!ref'])
+  for (let row = range.s.r + 1; row <= range.e.r; row += 1) {
+    for (let column = range.s.c; column <= range.e.c; column += 1) {
+      const header = displayValue(headerRow[column - range.s.c])
+      if (!header) continue
+
+      const cell = worksheet[
+        XLSX.utils.encode_cell({ r: row, c: column })
+      ] as CellObject | undefined
+      const target = cell?.l?.Target?.trim()
+      if (!target) continue
+
+      const hyperlinks = linksByRow.get(row) ?? {}
+      hyperlinks[header] = {
+        target,
+        tooltip: cell?.l?.Tooltip?.trim() || undefined,
+      }
+      linksByRow.set(row, hyperlinks)
+    }
+  }
+  return linksByRow
 }
 
 export async function parseWorkbookFile(file: File): Promise<WorkbookData> {
@@ -185,7 +228,12 @@ export async function parseWorkbookFile(file: File): Promise<WorkbookData> {
       defval: null,
       raw: false,
     })
-    return processSheet(sheetName, rows, originalColumns)
+    const hyperlinksByRow = extractWorksheetHyperlinks(
+      XLSX,
+      worksheet,
+      matrix[0] ?? [],
+    )
+    return processSheet(sheetName, rows, originalColumns, hyperlinksByRow)
   })
 
   return {
@@ -225,6 +273,10 @@ export function getTableColumns(
 interface ExportExtras {
   columns: string[]
   valueFor: (row: ProcessedRow) => Record<string, CellValue>
+  hyperlinkFor?: (
+    row: ProcessedRow,
+    column: string,
+  ) => CellHyperlink | undefined
 }
 
 export interface MetricExportSheet {
@@ -232,6 +284,7 @@ export interface MetricExportSheet {
   rows: ProcessedRow[]
   columns: string[]
   extras: ExportExtras
+  lineageUrl?: string
 }
 
 export function safeExcelSheetNames(names: string[]): string[] {
@@ -280,17 +333,29 @@ export async function exportRows(
     sheetRows: ProcessedRow[],
     sheetColumns: string[],
     sheetExtras?: ExportExtras,
+    lineageUrl?: string,
   ) => {
     const originalColumns = sheetColumns.filter(
       (column) =>
         !(DERIVED_COLUMNS as readonly string[]).includes(column) &&
         !sheetExtras?.columns.includes(column),
     )
-    const records = sheetRows.map((row) => ({
-      ...(sheetExtras ? sheetExtras.valueFor(row) : {}),
-      ...processedRowToRecord(row, originalColumns),
-    }))
+    const records = sheetRows.map((row) => {
+      const values = {
+        ...(sheetExtras ? sheetExtras.valueFor(row) : {}),
+        ...processedRowToRecord(row, originalColumns),
+      }
+      return Object.fromEntries(
+        sheetColumns.map((column) => [column, values[column] ?? '']),
+      )
+    })
     const sheet = XLSX.utils.json_to_sheet(records, { header: sheetColumns })
+    const border = {
+      top: { style: 'thin', color: { rgb: 'D8D5DE' } },
+      bottom: { style: 'thin', color: { rgb: 'D8D5DE' } },
+      left: { style: 'thin', color: { rgb: 'D8D5DE' } },
+      right: { style: 'thin', color: { rgb: 'D8D5DE' } },
+    }
 
     // Colour the header row: original Excel columns = dark blue, derived/metric = dark orange.
     const isOriginal = (col: string) =>
@@ -309,8 +374,45 @@ export async function exportRows(
           },
           font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
           alignment: { vertical: 'center' },
+          border,
         },
       }
+    })
+
+    sheetRows.forEach((row, rowIndex) => {
+      sheetColumns.forEach((column, columnIndex) => {
+        const ref = XLSX.utils.encode_cell({
+          r: rowIndex + 1,
+          c: columnIndex,
+        })
+        const cell = sheet[ref] ?? { v: '', t: 's' }
+        const value = records[rowIndex]?.[column]
+        const hyperlink =
+          sheetExtras?.hyperlinkFor?.(row, column) ??
+          hyperlinkForOriginalColumn(row, column) ??
+          hyperlinkForMatchingValue(row, value)
+
+        cell.s = {
+          ...(cell.s ?? {}),
+          border,
+          ...(hyperlink
+            ? {
+                font: {
+                  ...(cell.s?.font ?? {}),
+                  color: { rgb: '0563C1' },
+                  underline: true,
+                },
+              }
+            : {}),
+        }
+        if (hyperlink) {
+          cell.l = {
+            Target: hyperlink.target,
+            ...(hyperlink.tooltip ? { Tooltip: hyperlink.tooltip } : {}),
+          }
+        }
+        sheet[ref] = cell
+      })
     })
 
     // Highlight invalid Impacted Asset / Impacted Asset Type relationships.
@@ -325,6 +427,7 @@ export async function exportRows(
         const cell = sheet[ref] ?? { v: '', t: 's' }
         cell.s = {
           ...(cell.s ?? {}),
+          border,
           fill: {
             patternType: 'solid',
             fgColor: { rgb: 'FFF2CC' },
@@ -333,6 +436,30 @@ export async function exportRows(
         sheet[ref] = cell
       })
     })
+
+    if (lineageUrl) {
+      const lineageRow = sheetRows.length + 3
+      const messageRef = XLSX.utils.encode_cell({ r: lineageRow, c: 0 })
+      const linkRef = XLSX.utils.encode_cell({ r: lineageRow, c: 1 })
+      sheet[messageRef] = {
+        v: 'To view lineage for this metric,',
+        t: 's',
+        s: { border },
+      }
+      sheet[linkRef] = {
+        v: 'click here',
+        t: 's',
+        l: { Target: lineageUrl },
+        s: {
+          border,
+          font: { color: { rgb: '0563C1' }, underline: true },
+        },
+      }
+      sheet['!ref'] = XLSX.utils.encode_range(
+        { r: 0, c: 0 },
+        { r: lineageRow, c: Math.max(sheetColumns.length - 1, 1) },
+      )
+    }
 
     // Enable Excel auto-filter on all columns.
     if (sheet['!ref']) {
@@ -359,6 +486,7 @@ export async function exportRows(
           metricSheet.rows,
           metricSheet.columns,
           metricSheet.extras,
+          metricSheet.lineageUrl,
         ),
         sheetNames[index],
       )

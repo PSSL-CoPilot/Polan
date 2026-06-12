@@ -21,6 +21,7 @@ import { allMetrics, findMetric, useProject } from './hooks/useProject'
 import { useWorkbooks } from './hooks/useWorkbooks'
 import type { AppView, Layer, MetricRecord, WorkbookData } from './types'
 import { buildLineage } from './utils/lineage'
+import { parseLineageRoute } from './utils/lineageLink'
 import { buildMetricTableEntries } from './utils/metricData'
 import { downloadProjectFile, parseProjectFile } from './utils/storage'
 
@@ -45,7 +46,12 @@ const LINEAGE_FILTER_OPTS = [
 ] as const
 
 function App() {
-  const [activeView, setActiveView] = useState<AppView>('upload')
+  const [lineageRoute, setLineageRoute] = useState(() =>
+    parseLineageRoute(window.location.hash),
+  )
+  const [activeView, setActiveView] = useState<AppView>(
+    lineageRoute ? 'lineage' : 'upload',
+  )
   const [selectedSheet, setSelectedSheet] = useState('all')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
@@ -60,12 +66,28 @@ function App() {
   })
   const [deleteCandidateId, setDeleteCandidateId] = useState<string | null>(null)
   const [lineageFilter, setLineageFilter] = useState<string | null>(null)
-  const [lineageMetricFilter, setLineageMetricFilter] = useState<string | null>(null)
+  const [lineageMetricFilter, setLineageMetricFilter] = useState<string | null>(
+    lineageRoute?.metricId ?? null,
+  )
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pendingSheetSelectionRef = useRef<{
     workbookId: string
     sheetName: string
   } | null>(null)
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const route = parseLineageRoute(window.location.hash)
+      setLineageRoute(route)
+      if (!route) return
+      setActiveView('lineage')
+      setSelectedSheet('all')
+      setLineageFilter(null)
+      setLineageMetricFilter(route.metricId)
+    }
+    window.addEventListener('hashchange', handleHashChange)
+    return () => window.removeEventListener('hashchange', handleHashChange)
+  }, [])
 
   const {
     project,
@@ -122,8 +144,18 @@ function App() {
     )
     pendingSheetSelectionRef.current = null
     setLineageFilter(null)
-    setLineageMetricFilter(null)
-  }, [activeWorkbookId])
+    setLineageMetricFilter(lineageRoute?.metricId ?? null)
+  }, [activeWorkbookId, lineageRoute])
+
+  useEffect(() => {
+    if (
+      lineageRoute?.workbookId &&
+      activeWorkbookId !== lineageRoute.workbookId &&
+      workbooks.some((item) => item.id === lineageRoute.workbookId)
+    ) {
+      selectWorkbook(lineageRoute.workbookId)
+    }
+  }, [activeWorkbookId, lineageRoute, selectWorkbook, workbooks])
 
   const handleSelectWorkbookSheet = (
     workbookId: string,
@@ -140,15 +172,23 @@ function App() {
     setActiveView('lineage')
   }
 
-  const validSheets =
-    workbook?.sheets.filter((sheet) => !sheet.errors.length) ?? []
-  const allRows = validSheets.flatMap((sheet) => sheet.rows)
-  const selectedRows =
-    selectedSheet === 'all'
-      ? allRows
-      : validSheets
-          .filter((sheet) => sheet.name === selectedSheet)
-          .flatMap((sheet) => sheet.rows)
+  const validSheets = useMemo(
+    () => workbook?.sheets.filter((sheet) => !sheet.errors.length) ?? [],
+    [workbook],
+  )
+  const allRows = useMemo(
+    () => validSheets.flatMap((sheet) => sheet.rows),
+    [validSheets],
+  )
+  const selectedRows = useMemo(
+    () =>
+      selectedSheet === 'all'
+        ? allRows
+        : validSheets
+            .filter((sheet) => sheet.name === selectedSheet)
+            .flatMap((sheet) => sheet.rows),
+    [allRows, selectedSheet, validSheets],
+  )
 
   const metrics = useMemo(() => allMetrics(project), [project])
   const activeMetric = findMetric(project, project.selectedMetricId)
@@ -167,13 +207,15 @@ function App() {
 
   // Rows passed to the lineage graph, filtered by the active chip + metric.
   const lineageRows = useMemo(() => {
-    let filtered = selectedRows
+    let filtered = [...selectedRows]
     if (lineageFilter === 'mdr') filtered = filtered.filter((r) => r.mdrAvailability)
     else if (lineageFilter === 'no-mdr') filtered = filtered.filter((r) => !r.mdrAvailability)
     else if (lineageFilter) filtered = filtered.filter((r) => r.layer === (lineageFilter as Layer))
     if (lineageMetricFilter) {
       const m = metrics.find((x) => x.id === lineageMetricFilter)
-      if (m) filtered = filtered.filter((r) => m.connectedSheets.includes(r.sheet))
+      filtered = m
+        ? filtered.filter((r) => m.connectedSheets.includes(r.sheet))
+        : []
     }
     return filtered
   }, [selectedRows, lineageFilter, lineageMetricFilter, metrics])
@@ -488,6 +530,7 @@ function App() {
           <ArrowDownToLine size={18} />
         </div>
         <DataTable
+          activeWorkbookId={activeWorkbookId}
           directionFilter="upstream"
           includeDerived
           metricEntries={metricEntries}
@@ -496,6 +539,23 @@ function App() {
           sheets={workbook.sheets}
         />
       </div>
+    )
+  }
+
+  if (lineageRoute) {
+    return (
+      <main className="lineage-only-view">
+        <Suspense
+          fallback={
+            <div className="graph-loading">
+              <GitBranch size={20} />
+              Building lineage canvas...
+            </div>
+          }
+        >
+          <LineageGraph metrics={lineageMetrics} rows={lineageRows} />
+        </Suspense>
+      </main>
     )
   }
 
