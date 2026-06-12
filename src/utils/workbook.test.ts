@@ -104,6 +104,31 @@ describe('workbook enrichment', () => {
     })
   })
 
+  it('captures =HYPERLINK() formula links while keeping the visible text', async () => {
+    const worksheet = XLSX.utils.json_to_sheet([row])
+    // Real BI/Atlan exports store links as HYPERLINK formulas, not cell.l.
+    worksheet.A2 = {
+      t: 's',
+      f: 'HYPERLINK("https://example.atlan.com/assets/customer","Customer Table")',
+      v: 'Customer Table',
+    }
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Primary')
+    const bytes = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+    const file = new File([bytes], 'formula-links.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+
+    const parsed = await parseWorkbookFile(file)
+    const parsedRow = parsed.sheets[0].rows[0]
+
+    expect(parsedRow.hyperlinks?.['Source Asset']?.target).toBe(
+      'https://example.atlan.com/assets/customer',
+    )
+    // The visible text must stay the label, never the raw URL.
+    expect(parsedRow.sourceAsset).toBe('Customer Table')
+  })
+
   it('de-duplicates graph nodes and repeated relationships', () => {
     const sheet = processSheet('Lineage', [row, { ...row }], columns)
     const graph = buildLineage(sheet.rows)

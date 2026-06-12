@@ -167,6 +167,23 @@ export function processSheet(
   return { name, originalColumns: columns, rows, errors, warnings }
 }
 
+/**
+ * Pull the URL out of an `=HYPERLINK("url", "label")` formula. Many tools
+ * (Atlan, Power BI, BigQuery exports) store links as HYPERLINK formulas rather
+ * than native cell hyperlinks, so the link lives on `cell.f`, not `cell.l`.
+ * Returns the first quoted argument (the URL); the visible label is left on the
+ * cell value untouched. String references like `HYPERLINK(A1, ...)` have no
+ * literal URL and are skipped.
+ */
+function hyperlinkFromFormula(formula: string | undefined): string | undefined {
+  if (!formula) return undefined
+  // Capture the first string argument, allowing Excel's "" escaped quotes.
+  const match = /hyperlink\s*\(\s*"((?:[^"]|"")*)"/i.exec(formula)
+  if (!match) return undefined
+  const url = match[1].replace(/""/g, '"').trim()
+  return url || undefined
+}
+
 function extractWorksheetHyperlinks(
   XLSX: typeof import('xlsx'),
   worksheet: WorkSheet,
@@ -184,7 +201,9 @@ function extractWorksheetHyperlinks(
       const cell = worksheet[
         XLSX.utils.encode_cell({ r: row, c: column })
       ] as CellObject | undefined
-      const target = cell?.l?.Target?.trim()
+      // Prefer a native hyperlink; fall back to a HYPERLINK() formula.
+      const target =
+        cell?.l?.Target?.trim() || hyperlinkFromFormula(cell?.f)
       if (!target) continue
 
       const hyperlinks = linksByRow.get(row) ?? {}
