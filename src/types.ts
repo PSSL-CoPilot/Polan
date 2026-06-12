@@ -57,6 +57,21 @@ export interface WorkbookData {
   sheets: SheetData[]
 }
 
+/** A parsed workbook tracked in the multi-workbook collection. */
+export interface UploadedWorkbook {
+  id: string
+  displayName: string
+  originalFileName: string
+  sizeLabel: string
+  loadedAt: Date | string
+  sheets: SheetData[]
+}
+
+export interface WorkbookState {
+  workbooks: UploadedWorkbook[]
+  activeWorkbookId: string | null
+}
+
 export interface AssetRecord {
   id: string
   name: string

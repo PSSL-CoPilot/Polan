@@ -11,6 +11,7 @@ import {
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import './index.css'
 import './workspace.css'
+import { ConfirmDialog } from './components/ConfirmDialog'
 import { DataTable } from './components/DataTable'
 import { MetricModal, type MetricFormValues } from './components/MetricModal'
 import { MetricWorkspace } from './components/MetricWorkspace'
@@ -18,16 +19,11 @@ import { Sidebar } from './components/Sidebar'
 import { Topbar } from './components/Topbar'
 import { UploadWorkspace } from './components/UploadWorkspace'
 import { allMetrics, findMetric, useProject } from './hooks/useProject'
+import { useWorkbooks } from './hooks/useWorkbooks'
 import type { AppView, MetricRecord, WorkbookData } from './types'
 import { buildLineage } from './utils/lineage'
 import { buildMetricTableContext } from './utils/metricData'
-import {
-  downloadProjectFile,
-  loadWorkbookFromIdb,
-  parseProjectFile,
-  saveWorkbookToIdb,
-} from './utils/storage'
-import { parseWorkbookFile } from './utils/workbook'
+import { downloadProjectFile, parseProjectFile } from './utils/storage'
 
 const LineageGraph = lazy(() =>
   import('./components/LineageGraph').then((module) => ({
@@ -66,19 +62,21 @@ interface MetricModalState {
 }
 
 function App() {
-  const [workbook, setWorkbook] = useState<WorkbookData | null>(null)
   const [activeView, setActiveView] = useState<AppView>('upload')
   const [selectedSheet, setSelectedSheet] = useState('all')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  const [notice, setNotice] = useState<{
+    message: string
+    tone: 'success' | 'error'
+  } | null>(null)
   const [modal, setModal] = useState<MetricModalState>({
     open: false,
     viewId: null,
     editing: null,
   })
+  const [deleteCandidateId, setDeleteCandidateId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const restoredRef = useRef(false)
 
   const {
     project,
@@ -96,18 +94,40 @@ function App() {
     replaceProject,
   } = useProject()
 
-  // Restore the last parsed workbook from IndexedDB so a reload keeps the
-  // whole workspace alive. Project metadata restores from localStorage
-  // synchronously inside useProject.
+  const {
+    workbooks,
+    activeWorkbookId,
+    activeWorkbook,
+    workbookState,
+    addWorkbooks,
+    renameWorkbook,
+    deleteWorkbook,
+    selectWorkbook,
+    replaceWorkbooks,
+  } = useWorkbooks()
+
+  // Present the active workbook through the existing WorkbookData shape so the
+  // downstream views (preview, processed, lineage, metrics) stay unchanged.
+  const workbook = useMemo<WorkbookData | null>(
+    () =>
+      activeWorkbook
+        ? {
+            name: activeWorkbook.displayName,
+            sizeLabel: activeWorkbook.sizeLabel,
+            loadedAt:
+              activeWorkbook.loadedAt instanceof Date
+                ? activeWorkbook.loadedAt
+                : new Date(activeWorkbook.loadedAt),
+            sheets: activeWorkbook.sheets,
+          }
+        : null,
+    [activeWorkbook],
+  )
+
+  // Switching the active workbook always resets the sheet selector to "all".
   useEffect(() => {
-    if (restoredRef.current) return
-    restoredRef.current = true
-    loadWorkbookFromIdb().then((stored) => {
-      if (stored) {
-        setWorkbook((current) => current ?? stored)
-      }
-    })
-  }, [])
+    setSelectedSheet('all')
+  }, [activeWorkbookId])
 
   const validSheets =
     workbook?.sheets.filter((sheet) => !sheet.errors.length) ?? []
@@ -146,48 +166,46 @@ function App() {
       )
     : 0
 
-  const applyWorkbook = (next: WorkbookData | null) => {
-    setWorkbook(next)
-    void saveWorkbookToIdb(next)
-  }
-
-  const handleFile = async (file: File) => {
+  const handleFiles = async (files: File[]) => {
+    const excelFiles = files.filter((file) => /\.xlsx?$/i.test(file.name))
+    const rejected = files.length - excelFiles.length
     setIsLoading(true)
     setError('')
-    try {
-      if (file.size > 25 * 1024 * 1024) {
-        throw new Error('The workbook is larger than the 25 MB upload limit.')
-      }
-      const nextWorkbook = await parseWorkbookFile(file)
-      applyWorkbook(nextWorkbook)
-      setSelectedSheet('all')
-      setActiveView('preview')
-    } catch (caught) {
-      setError(
-        caught instanceof Error ? caught.message : 'The workbook could not be read.',
+    const { added, errors } = await addWorkbooks(excelFiles)
+    if (rejected > 0) {
+      errors.push(
+        `${rejected} file${rejected === 1 ? '' : 's'} skipped — only .xlsx and .xls are supported.`,
       )
-    } finally {
-      setIsLoading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
     }
+    setIsLoading(false)
+    const errorText = errors.join(' ')
+    if (added > 0) {
+      setError('')
+      setActiveView('preview')
+      // We've navigated off the upload page, so report any skipped files via
+      // the toast rather than the upload-page error banner.
+      if (errorText) flashNotice(`Some files were skipped: ${errorText}`, 'error')
+      else flashNotice(added === 1 ? 'Workbook added.' : `${added} workbooks added.`)
+    } else {
+      setError(errorText || 'No valid workbooks were found in your selection.')
+    }
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const handleSaveProject = () => {
-    downloadProjectFile(project, workbook)
+    downloadProjectFile(project, workbookState)
     flashNotice('Project saved as a .polan.json download.')
   }
 
   const handleOpenProject = async (file: File) => {
     setError('')
     try {
-      const { project: nextProject, workbook: nextWorkbook } =
+      const { project: nextProject, workbooks: nextWorkbooks } =
         parseProjectFile(await file.text())
       replaceProject(nextProject)
-      if (nextWorkbook) {
-        applyWorkbook(nextWorkbook)
-        setSelectedSheet('all')
-      }
-      setActiveView(nextWorkbook ? 'preview' : 'upload')
+      replaceWorkbooks(nextWorkbooks)
+      setSelectedSheet('all')
+      setActiveView(nextWorkbooks.workbooks.length ? 'preview' : 'upload')
       flashNotice(`Project "${nextProject.name}" restored.`)
     } catch (caught) {
       setError(
@@ -199,11 +217,24 @@ function App() {
     }
   }
 
+  const deleteCandidate = workbooks.find((wb) => wb.id === deleteCandidateId)
+  const confirmDeleteWorkbook = () => {
+    if (!deleteCandidateId) return
+    const wasLast = workbooks.length === 1
+    deleteWorkbook(deleteCandidateId)
+    setDeleteCandidateId(null)
+    if (wasLast) setActiveView('upload')
+    flashNotice('Workbook deleted.')
+  }
+
   const noticeTimer = useRef<number | undefined>(undefined)
-  const flashNotice = (message: string) => {
-    setNotice(message)
+  const flashNotice = (
+    message: string,
+    tone: 'success' | 'error' = 'success',
+  ) => {
+    setNotice({ message, tone })
     window.clearTimeout(noticeTimer.current)
-    noticeTimer.current = window.setTimeout(() => setNotice(''), 3200)
+    noticeTimer.current = window.setTimeout(() => setNotice(null), 4200)
   }
 
   const openCreateMetric = (viewId: string) =>
@@ -316,7 +347,7 @@ function App() {
           error={error}
           isLoading={isLoading}
           onContinue={() => setActiveView('lineage')}
-          onFile={handleFile}
+          onFiles={handleFiles}
           workbook={workbook}
         />
       )
@@ -410,6 +441,7 @@ function App() {
       <Sidebar
         activeMetricId={project.selectedMetricId}
         activeView={activeView}
+        activeWorkbookId={activeWorkbookId}
         hasWorkbook={Boolean(workbook)}
         onAddView={addView}
         onChange={setActiveView}
@@ -419,9 +451,14 @@ function App() {
         onRenameMetric={(metricId, name) => updateMetric(metricId, { name })}
         onRenameProject={renameProject}
         onRenameView={renameView}
+        onRenameWorkbook={renameWorkbook}
+        onRequestDeleteWorkbook={setDeleteCandidateId}
         onSelectMetric={handleSelectMetric}
+        onSelectWorkbook={selectWorkbook}
         onToggleView={toggleView}
+        onUploadWorkbook={() => fileInputRef.current?.click()}
         project={project}
+        workbooks={workbooks}
       />
       <div className="main-column">
         <Topbar
@@ -433,9 +470,10 @@ function App() {
         <input
           accept=".xlsx,.xls"
           className="hidden-input"
+          multiple
           onChange={(event) => {
-            const file = event.target.files?.[0]
-            if (file) handleFile(file)
+            const files = Array.from(event.target.files ?? [])
+            if (files.length) handleFiles(files)
           }}
           ref={fileInputRef}
           type="file"
@@ -460,16 +498,33 @@ function App() {
         open={modal.open}
       />
 
+      <ConfirmDialog
+        confirmLabel="Delete workbook"
+        message={
+          deleteCandidate
+            ? `"${deleteCandidate.displayName}" and its parsed data will be removed. This cannot be undone.`
+            : ''
+        }
+        onCancel={() => setDeleteCandidateId(null)}
+        onConfirm={confirmDeleteWorkbook}
+        open={Boolean(deleteCandidate)}
+        title="Delete workbook?"
+      />
+
       <AnimatePresence>
         {notice && (
           <motion.div
             animate={{ opacity: 1, y: 0 }}
-            className="toast"
+            className={`toast ${notice.tone === 'error' ? 'toast-error' : ''}`}
             exit={{ opacity: 0, y: 8 }}
             initial={{ opacity: 0, y: 8 }}
           >
-            <CheckCircle2 size={15} />
-            {notice}
+            {notice.tone === 'error' ? (
+              <AlertTriangle size={15} />
+            ) : (
+              <CheckCircle2 size={15} />
+            )}
+            {notice.message}
           </motion.div>
         )}
       </AnimatePresence>

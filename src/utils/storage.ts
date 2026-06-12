@@ -1,8 +1,10 @@
 import type {
   MetricRecord,
   ProjectState,
+  UploadedWorkbook,
   ViewRecord,
   WorkbookData,
+  WorkbookState,
 } from '../types'
 
 /**
@@ -20,8 +22,9 @@ import type {
 const PROJECT_KEY = 'polan.project.v1'
 const DB_NAME = 'polan-studio'
 const DB_STORE = 'kv'
-const WORKBOOK_KEY = 'workbook'
-export const PROJECT_FILE_VERSION = 1
+const WORKBOOK_KEY = 'workbook' // legacy single-workbook key (migrated on load)
+const WORKBOOKS_KEY = 'workbooks.v2'
+export const PROJECT_FILE_VERSION = 2
 
 export const createId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -143,27 +146,71 @@ function openDb(): Promise<IDBDatabase> {
   })
 }
 
-function sanitizeWorkbook(value: unknown): WorkbookData | null {
-  if (!value || typeof value !== 'object') return null
-  const raw = value as Record<string, unknown>
-  if (!Array.isArray(raw.sheets)) return null
-  const loadedAt = new Date(raw.loadedAt as string)
+/** Wrap a freshly parsed workbook (or a legacy single workbook) into a
+ *  tracked collection entry. */
+export function toUploadedWorkbook(
+  workbook: WorkbookData,
+  displayName?: string,
+): UploadedWorkbook {
   return {
-    name: asString(raw.name, 'workbook.xlsx'),
-    sizeLabel: asString(raw.sizeLabel, ''),
-    loadedAt: Number.isNaN(loadedAt.getTime()) ? new Date() : loadedAt,
-    sheets: raw.sheets as WorkbookData['sheets'],
+    id: createId(),
+    displayName: displayName?.trim() || workbook.name || 'Untitled Workbook',
+    originalFileName: workbook.name || 'workbook.xlsx',
+    sizeLabel: workbook.sizeLabel,
+    loadedAt: workbook.loadedAt,
+    sheets: workbook.sheets,
   }
 }
 
-export async function saveWorkbookToIdb(workbook: WorkbookData | null) {
+function sanitizeUploadedWorkbook(value: unknown): UploadedWorkbook | null {
+  if (!value || typeof value !== 'object') return null
+  const raw = value as Record<string, unknown>
+  if (!Array.isArray(raw.sheets)) return null
+  const originalFileName = asString(raw.originalFileName || raw.name, 'workbook.xlsx')
+  return {
+    id: asString(raw.id) || createId(),
+    displayName:
+      asString(raw.displayName).trim() || originalFileName || 'Untitled Workbook',
+    originalFileName,
+    sizeLabel: asString(raw.sizeLabel, ''),
+    loadedAt: asString(raw.loadedAt) || new Date().toISOString(),
+    sheets: raw.sheets as UploadedWorkbook['sheets'],
+  }
+}
+
+export function sanitizeWorkbookState(value: unknown): WorkbookState {
+  const empty: WorkbookState = { workbooks: [], activeWorkbookId: null }
+  if (!value || typeof value !== 'object') return empty
+  const raw = value as Record<string, unknown>
+
+  // New collection shape.
+  if (Array.isArray(raw.workbooks)) {
+    const workbooks = raw.workbooks
+      .map(sanitizeUploadedWorkbook)
+      .filter((wb): wb is UploadedWorkbook => Boolean(wb))
+    const ids = new Set(workbooks.map((wb) => wb.id))
+    const activeId = asString(raw.activeWorkbookId) || null
+    return {
+      workbooks,
+      activeWorkbookId:
+        activeId && ids.has(activeId) ? activeId : workbooks[0]?.id ?? null,
+    }
+  }
+
+  // Legacy single-workbook shape (migration).
+  const single = sanitizeUploadedWorkbook(raw)
+  if (single) return { workbooks: [single], activeWorkbookId: single.id }
+  return empty
+}
+
+export async function saveWorkbooksToIdb(state: WorkbookState) {
   try {
     const db = await openDb()
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(DB_STORE, 'readwrite')
       const store = tx.objectStore(DB_STORE)
-      if (workbook) store.put(workbook, WORKBOOK_KEY)
-      else store.delete(WORKBOOK_KEY)
+      store.put(state, WORKBOOKS_KEY)
+      store.delete(WORKBOOK_KEY) // drop the legacy entry once migrated
       tx.oncomplete = () => resolve()
       tx.onerror = () => reject(tx.error)
     })
@@ -173,34 +220,44 @@ export async function saveWorkbookToIdb(workbook: WorkbookData | null) {
   }
 }
 
-export async function loadWorkbookFromIdb(): Promise<WorkbookData | null> {
+export async function loadWorkbooksFromIdb(): Promise<WorkbookState> {
   try {
     const db = await openDb()
-    const result = await new Promise<unknown>((resolve, reject) => {
-      const tx = db.transaction(DB_STORE, 'readonly')
-      const request = tx.objectStore(DB_STORE).get(WORKBOOK_KEY)
-      request.onsuccess = () => resolve(request.result)
-      request.onerror = () => reject(request.error)
-    })
+    const [collection, legacy] = await Promise.all([
+      idbGet(db, WORKBOOKS_KEY),
+      idbGet(db, WORKBOOK_KEY),
+    ])
     db.close()
-    return sanitizeWorkbook(result)
+    if (collection) return sanitizeWorkbookState(collection)
+    if (legacy) return sanitizeWorkbookState(legacy) // migrate old single key
+    return { workbooks: [], activeWorkbookId: null }
   } catch {
-    return null
+    return { workbooks: [], activeWorkbookId: null }
   }
+}
+
+function idbGet(db: IDBDatabase, key: string): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(DB_STORE, 'readonly')
+    const request = tx.objectStore(DB_STORE).get(key)
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
 }
 
 // ── .polan.json: save / open project files ───────────────────────────────────
 
 export function downloadProjectFile(
   project: ProjectState,
-  workbook: WorkbookData | null,
+  workbooks: WorkbookState,
 ) {
   const payload = {
     format: 'polan-project',
     version: PROJECT_FILE_VERSION,
     savedAt: new Date().toISOString(),
     project,
-    workbook,
+    workbooks: workbooks.workbooks,
+    activeWorkbookId: workbooks.activeWorkbookId,
   }
   const blob = new Blob([JSON.stringify(payload, null, 2)], {
     type: 'application/json',
@@ -216,7 +273,7 @@ export function downloadProjectFile(
 
 export function parseProjectFile(text: string): {
   project: ProjectState
-  workbook: WorkbookData | null
+  workbooks: WorkbookState
 } {
   let raw: unknown
   try {
@@ -235,7 +292,11 @@ export function parseProjectFile(text: string): {
   if (!project) {
     throw new Error('The project data inside this file is invalid.')
   }
-  return { project, workbook: sanitizeWorkbook(data.workbook) }
+  // v2 carries a workbook collection; v1 carried a single `workbook`.
+  const workbooks = data.workbooks
+    ? sanitizeWorkbookState(data)
+    : sanitizeWorkbookState(data.workbook)
+  return { project, workbooks }
 }
 
 export function isValidHttpUrl(value: string) {

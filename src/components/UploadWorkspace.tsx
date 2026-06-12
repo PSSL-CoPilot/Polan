@@ -16,7 +16,7 @@ interface UploadWorkspaceProps {
   workbook: WorkbookData | null
   isLoading: boolean
   error: string
-  onFile: (file: File) => void
+  onFiles: (files: File[]) => void
   onContinue: () => void
 }
 
@@ -24,7 +24,7 @@ export function UploadWorkspace({
   workbook,
   isLoading,
   error,
-  onFile,
+  onFiles,
   onContinue,
 }: UploadWorkspaceProps) {
   const [dragging, setDragging] = useState(false)
@@ -39,8 +39,8 @@ export function UploadWorkspace({
   const onDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault()
     setDragging(false)
-    const file = event.dataTransfer.files[0]
-    if (file) onFile(file)
+    const files = Array.from(event.dataTransfer.files)
+    if (files.length) onFiles(files)
   }
 
   return (
@@ -50,8 +50,8 @@ export function UploadWorkspace({
           <span className="eyebrow">Workbook intake</span>
           <h1>Turn spreadsheets into living lineage.</h1>
           <p>
-            Upload one workbook and Polan will validate every sheet, enrich
-            governance metadata, and map the complete asset journey.
+            Upload one or more workbooks and Polan will validate every sheet,
+            enrich governance metadata, and map the complete asset journey.
           </p>
         </div>
         <div className="trust-note">
@@ -75,10 +75,11 @@ export function UploadWorkspace({
         >
           <input
             accept=".xlsx,.xls"
-            aria-label="Upload Excel workbook"
+            aria-label="Upload Excel workbooks"
+            multiple
             onChange={(event) => {
-              const file = event.target.files?.[0]
-              if (file) onFile(file)
+              const files = Array.from(event.target.files ?? [])
+              if (files.length) onFiles(files)
               event.target.value = ''
             }}
             ref={fileInputRef}
@@ -88,20 +89,22 @@ export function UploadWorkspace({
             <UploadCloud size={28} />
           </div>
           <h2>
-            {isLoading ? 'Reading your workbook...' : 'Drop your Excel file here'}
+            {isLoading
+              ? 'Reading your workbooks...'
+              : 'Drop your Excel files here'}
           </h2>
           <p>or click to browse from your computer</p>
           <div className="file-rules">
             <span>.XLSX or .XLS</span>
-            <span>Multiple sheets supported</span>
-            <span>Up to 25 MB</span>
+            <span>Multiple files supported</span>
+            <span>Up to 25 MB each</span>
           </div>
           <button
             className="secondary-button"
             onClick={() => fileInputRef.current?.click()}
             type="button"
           >
-            Choose workbook
+            Choose workbooks
           </button>
         </motion.div>
 

@@ -5,8 +5,9 @@ import {
   GitBranch,
   TableProperties,
 } from 'lucide-react'
-import type { AppView, ProjectState } from '../types'
+import type { AppView, ProjectState, UploadedWorkbook } from '../types'
 import { ProjectExplorer } from './ProjectExplorer'
+import { WorkbookList } from './WorkbookList'
 
 interface SidebarProps {
   activeView: AppView
@@ -14,6 +15,12 @@ interface SidebarProps {
   onChange: (view: AppView) => void
   project: ProjectState
   activeMetricId: string | null
+  workbooks: UploadedWorkbook[]
+  activeWorkbookId: string | null
+  onSelectWorkbook: (id: string) => void
+  onRenameWorkbook: (id: string, name: string) => void
+  onRequestDeleteWorkbook: (id: string) => void
+  onUploadWorkbook: () => void
   onRenameProject: (name: string) => void
   onAddView: () => void
   onRenameView: (viewId: string, name: string) => void
@@ -63,6 +70,12 @@ export function Sidebar({
   onChange,
   project,
   activeMetricId,
+  workbooks,
+  activeWorkbookId,
+  onSelectWorkbook,
+  onRenameWorkbook,
+  onRequestDeleteWorkbook,
+  onUploadWorkbook,
   ...explorerActions
 }: SidebarProps) {
   return (
@@ -99,6 +112,15 @@ export function Sidebar({
           )
         })}
       </nav>
+
+      <WorkbookList
+        activeWorkbookId={activeWorkbookId}
+        onRename={onRenameWorkbook}
+        onRequestDelete={onRequestDeleteWorkbook}
+        onSelect={onSelectWorkbook}
+        onUpload={onUploadWorkbook}
+        workbooks={workbooks}
+      />
 
       <ProjectExplorer
         activeMetricId={activeView === 'metric' ? activeMetricId : null}

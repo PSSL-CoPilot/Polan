@@ -1,5 +1,190 @@
-/* Styles for the project workspace layer: metric modal, metric workspace,
-   metric table columns, lineage metric details, and toasts. */
+/* Styles for the project workspace layer: workbook list, metric modal, metric
+   workspace, metric table columns, lineage metric details, and toasts. */
+
+/* ── Workbooks list (sidebar) ───────────────────────────────────────────── */
+
+.workbook-list {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #26252d;
+}
+
+.wb-items {
+  display: grid;
+  gap: 4px;
+  max-height: 232px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.wb-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 9px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: #9b99a4;
+  cursor: pointer;
+  transition: 140ms ease;
+}
+
+.wb-item:hover {
+  background: #202027;
+}
+
+.wb-item.active {
+  color: #fff;
+  background: #24232b;
+  border-color: #34333d;
+  box-shadow: inset 2px 0 #6557dc;
+}
+
+.wb-icon {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: #2e9b64;
+  background: #1c2a22;
+  border-radius: 7px;
+}
+
+.wb-item.active .wb-icon {
+  color: #4cd494;
+}
+
+.wb-copy {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+}
+
+.wb-copy strong {
+  overflow: hidden;
+  color: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-copy small {
+  margin-top: 2px;
+  color: #74727e;
+  font-size: 9.5px;
+}
+
+.wb-rename {
+  width: 100%;
+  padding: 2px 6px;
+  color: #fff;
+  background: #15151a;
+  border: 1px solid #4a4760;
+  border-radius: 5px;
+  outline: none;
+  font-size: 11px;
+}
+
+.wb-actions {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+.wb-item:hover .wb-actions {
+  display: flex;
+}
+
+.wb-actions button {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  color: #84828d;
+  background: transparent;
+  border-radius: 5px;
+}
+
+.wb-actions button:hover {
+  color: #fff;
+  background: #2f2e37;
+}
+
+.wb-actions button.danger:hover {
+  color: #ff8d83;
+  background: rgba(225, 105, 93, 0.16);
+}
+
+.wb-active-dot {
+  position: absolute;
+  top: 8px;
+  right: 9px;
+  width: 15px;
+  height: 15px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: #6557dc;
+  border-radius: 50%;
+}
+
+.wb-item:hover .wb-active-dot {
+  display: none;
+}
+
+.wb-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 10px;
+  color: #74727e;
+  background: transparent;
+  border: 1px dashed #34333c;
+  border-radius: 9px;
+  font-size: 10.5px;
+  text-align: left;
+  transition: 140ms ease;
+}
+
+.wb-empty:hover {
+  color: #b7aef7;
+  border-color: #4a4760;
+}
+
+/* ── Confirm dialog ─────────────────────────────────────────────────────── */
+
+.confirm-card {
+  width: min(400px, 100%);
+}
+
+.confirm-card .modal-head {
+  border-bottom: 0;
+  padding-bottom: 4px;
+}
+
+.modal-icon.danger {
+  color: #cf4438;
+  background: #fdecea;
+  border-color: #f6d2cd;
+}
+
+.confirm-footer {
+  padding: 12px 20px 20px;
+}
+
+.primary-button.danger-button {
+  background: #d6453a;
+  box-shadow: 0 5px 14px rgba(214, 69, 58, 0.24);
+}
+
+.primary-button.danger-button:hover {
+  background: #c33a30;
+}
 
 /* ── Metric modal ───────────────────────────────────────────────────────── */
 
@@ -514,4 +699,12 @@
 
 .toast svg {
   color: #5cc995;
+}
+
+.toast.toast-error {
+  max-width: 460px;
+}
+
+.toast.toast-error svg {
+  color: #ff8d83;
 }
