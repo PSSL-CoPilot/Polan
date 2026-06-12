@@ -19,6 +19,10 @@ import {
   type MetricTableContext,
 } from '../utils/metricData'
 import {
+  IMPACTED_ASSET_TYPE_WARNING,
+  isImpactedAssetTypeMismatch,
+} from '../utils/processedDataValidation'
+import {
   exportRows,
   getTableColumns,
   type MetricExportSheet,
@@ -350,22 +354,44 @@ export function DataTable({
             </tr>
           </thead>
           <tbody>
-            {filteredRows.map((item, index) => (
-              <tr key={item.key}>
-                <td className="row-number">{index + 1}</td>
-                {selectedSheet === 'all' && (
-                  <td className="sheet-cell">{item.row.sheet}</td>
-                )}
-                {columns.map((column) => (
-                  <td
-                    key={column}
-                    title={String(getValue(item, column) ?? '')}
-                  >
-                    {renderCell(item, column)}
+            {filteredRows.map((item, index) => {
+              const hasAssetTypeMismatch =
+                isImpactedAssetTypeMismatch(item.row)
+              return (
+                <tr
+                  className={
+                    hasAssetTypeMismatch
+                      ? 'processed-row-validation-warning'
+                      : undefined
+                  }
+                  key={item.key}
+                >
+                  <td className="row-number">
+                    {index + 1}
+                    {hasAssetTypeMismatch && (
+                      <span
+                        aria-label={IMPACTED_ASSET_TYPE_WARNING}
+                        className="row-validation-indicator"
+                        title={IMPACTED_ASSET_TYPE_WARNING}
+                      >
+                        !
+                      </span>
+                    )}
                   </td>
-                ))}
-              </tr>
-            ))}
+                  {selectedSheet === 'all' && (
+                    <td className="sheet-cell">{item.row.sheet}</td>
+                  )}
+                  {columns.map((column) => (
+                    <td
+                      key={column}
+                      title={String(getValue(item, column) ?? '')}
+                    >
+                      {renderCell(item, column)}
+                    </td>
+                  ))}
+                </tr>
+              )
+            })}
           </tbody>
         </table>
         {!filteredRows.length && (

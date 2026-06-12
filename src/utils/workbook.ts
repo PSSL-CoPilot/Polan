@@ -9,6 +9,7 @@ import {
   type SheetData,
   type WorkbookData,
 } from '../types'
+import { isImpactedAssetTypeMismatch } from './processedDataValidation'
 
 const normalizedHeader = (value: string) =>
   value.trim().toLowerCase().replace(/\s+/g, ' ')
@@ -310,6 +311,27 @@ export async function exportRows(
           alignment: { vertical: 'center' },
         },
       }
+    })
+
+    // Highlight invalid Impacted Asset / Impacted Asset Type relationships.
+    sheetRows.forEach((row, rowIndex) => {
+      if (!isImpactedAssetTypeMismatch(row)) return
+
+      sheetColumns.forEach((_, columnIndex) => {
+        const ref = XLSX.utils.encode_cell({
+          r: rowIndex + 1,
+          c: columnIndex,
+        })
+        const cell = sheet[ref] ?? { v: '', t: 's' }
+        cell.s = {
+          ...(cell.s ?? {}),
+          fill: {
+            patternType: 'solid',
+            fgColor: { rgb: 'FFF2CC' },
+          },
+        }
+        sheet[ref] = cell
+      })
     })
 
     // Enable Excel auto-filter on all columns.

@@ -1,14 +1,31 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import * as XLSX from 'xlsx'
 import { buildLineage } from './lineage'
 import {
   deriveGovernance,
+  exportRows,
   parseQualifiedName,
   parseWorkbookFile,
   processSheet,
   safeExcelSheetNames,
 } from './workbook'
-import type { OriginalRow } from '../types'
+import { DERIVED_COLUMNS, type OriginalRow } from '../types'
+
+const exportCapture = vi.hoisted(() => ({
+  workbook: null as XLSX.WorkBook | null,
+}))
+
+vi.mock('xlsx-js-style', async () => {
+  const actual = await vi.importActual<typeof import('xlsx')>('xlsx')
+  return {
+    default: {
+      ...actual,
+      writeFile: (workbook: XLSX.WorkBook) => {
+        exportCapture.workbook = workbook
+      },
+    },
+  }
+})
 
 const columns = [
   'Source Asset',
@@ -107,5 +124,36 @@ describe('workbook enrichment', () => {
       'Metric',
     ])
     expect(names.every((name) => name.length <= 31)).toBe(true)
+  })
+
+  it('highlights invalid impacted asset type rows in Excel exports', async () => {
+    const exportColumns = [...columns, 'Impacted Asset Type']
+    const processedColumns = [...exportColumns, ...DERIVED_COLUMNS]
+    const sheet = processSheet(
+      'Lineage',
+      [
+        {
+          ...row,
+          'Impacted Asset': 'customer_orders',
+          'Impacted Asset Type': 'table',
+        },
+        {
+          ...row,
+          'Impacted Asset': 'customer_orders_V',
+          'Impacted Asset Type': 'table',
+        },
+      ],
+      exportColumns,
+    )
+
+    await exportRows(sheet.rows, processedColumns)
+
+    const worksheet = exportCapture.workbook?.Sheets['Processed Lineage']
+    expect(worksheet?.A1.s.fill.fgColor.rgb).toBe('1E3A5F')
+    expect(worksheet?.A2.s?.fill).toBeUndefined()
+    expect(worksheet?.A3.s.fill.fgColor.rgb).toBe('FFF2CC')
+    expect(worksheet?.E3.s.fill.fgColor.rgb).toBe('FFF2CC')
+    expect(worksheet?.J3.s.fill.fgColor.rgb).toBe('FFF2CC')
+    expect(worksheet?.['!autofilter']).toEqual({ ref: 'A1:J1' })
   })
 })
