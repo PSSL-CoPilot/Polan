@@ -8,7 +8,7 @@ import {
   TrendingUp,
   Zap,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import type { UploadedWorkbook } from '../types'
 import {
   ALL_DASHBOARD_SHEETS,
@@ -47,7 +47,7 @@ interface DonutChartProps {
   items: DonutItem[]
 }
 
-function DonutChart({
+const DonutChart = memo(function DonutChart({
   title,
   description,
   centerLabel,
@@ -151,7 +151,7 @@ function DonutChart({
       </div>
     </section>
   )
-}
+})
 
 function makeCards(metrics: DashboardMetrics): KpiCard[] {
   return [
@@ -231,7 +231,29 @@ export function DashboardPage({ workbooks }: DashboardPageProps) {
     [workbooks, effectiveWorkbookId, effectiveSheet],
   )
   const stats = useMemo(() => computeDashboardMetrics(rows), [rows])
-  const cards = makeCards(stats)
+  const cards = useMemo(() => makeCards(stats), [stats])
+  const layerItems = useMemo(
+    () => [
+      { label: 'Gold', value: stats.gold, color: '#d99a24' },
+      { label: 'Silver', value: stats.silver, color: '#7c8798' },
+      { label: 'Raw / Bronze', value: stats.raw, color: '#b86838' },
+      { label: 'No Layers', value: stats.noLayer, color: '#c9c4dc' },
+    ],
+    [stats],
+  )
+  const mdrItems = useMemo(
+    () => [
+      { label: 'MDR available', value: stats.mdrYes, color: '#2d9b6f' },
+      {
+        label: 'MDR not available',
+        value: stats.mdrNo,
+        color: '#e36f65',
+      },
+    ],
+    [stats],
+  )
+  const layerIcon = useMemo(() => <Layers3 size={19} />, [])
+  const mdrIcon = useMemo(() => <ShieldCheck size={19} />, [])
 
   const handleWorkbookChange = (workbookId: string) => {
     setSelectedWorkbookId(workbookId)
@@ -312,39 +334,15 @@ export function DashboardPage({ workbooks }: DashboardPageProps) {
           <DonutChart
             centerLabel="rows"
             description="Processed rows grouped by governed data layer."
-            icon={<Layers3 size={19} />}
-            items={[
-              { label: 'Gold', value: stats.gold, color: '#d99a24' },
-              { label: 'Silver', value: stats.silver, color: '#7c8798' },
-              {
-                label: 'Raw / Bronze',
-                value: stats.raw,
-                color: '#b86838',
-              },
-              {
-                label: 'No Layers',
-                value: stats.noLayer,
-                color: '#c9c4dc',
-              },
-            ]}
+            icon={layerIcon}
+            items={layerItems}
             title="Layer Distribution"
           />
           <DonutChart
             centerLabel="rows"
             description="Processed rows with and without MDR availability."
-            icon={<ShieldCheck size={19} />}
-            items={[
-              {
-                label: 'MDR available',
-                value: stats.mdrYes,
-                color: '#2d9b6f',
-              },
-              {
-                label: 'MDR not available',
-                value: stats.mdrNo,
-                color: '#e36f65',
-              },
-            ]}
+            icon={mdrIcon}
+            items={mdrItems}
             title="MDR Coverage"
           />
         </div>

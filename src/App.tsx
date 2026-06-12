@@ -450,7 +450,7 @@ function App() {
 
     // ── Processed data ────────────────────────────────────────────────────────
     return (
-      <div className="page-content workspace-page">
+      <div className="page-content workspace-page processed-view">
         <div className="page-heading workspace-heading">
           <div>
             <span className="eyebrow">Governed output</span>
