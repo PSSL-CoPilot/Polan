@@ -12,9 +12,13 @@
 .wb-items {
   display: grid;
   gap: 4px;
-  max-height: 232px;
-  overflow-y: auto;
+  max-height: none;
+  overflow: visible;
   padding-right: 2px;
+}
+
+.wb-entry {
+  min-width: 0;
 }
 
 .wb-item {
@@ -120,13 +124,12 @@
 }
 
 .wb-active-dot {
-  position: absolute;
-  top: 8px;
-  right: 9px;
+  position: static;
   width: 15px;
   height: 15px;
   display: grid;
   place-items: center;
+  flex: 0 0 auto;
   color: #fff;
   background: #6557dc;
   border-radius: 50%;
@@ -134,6 +137,92 @@
 
 .wb-item:hover .wb-active-dot {
   display: none;
+}
+
+.wb-expand {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: #777581;
+  background: transparent;
+  border-radius: 5px;
+}
+
+.wb-expand:hover {
+  color: #fff;
+  background: #2f2e37;
+}
+
+.wb-expand svg {
+  transition: transform 160ms ease;
+}
+
+.wb-expand.expanded svg {
+  transform: rotate(90deg);
+}
+
+.wb-sheets {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  margin: 2px 4px 7px 20px;
+  padding: 3px 0 3px 12px;
+}
+
+.wb-sheets::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 1px;
+  background: #34333d;
+}
+
+.wb-sheet {
+  min-width: 0;
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 8px;
+  color: #85838e;
+  background: transparent;
+  border-radius: 7px;
+  text-align: left;
+  transition: 140ms ease;
+}
+
+.wb-sheet:hover {
+  color: #d8d6df;
+  background: #202027;
+}
+
+.wb-sheet.active {
+  color: #fff;
+  background: #292830;
+  box-shadow: inset 2px 0 #8174ef;
+}
+
+.wb-sheet span {
+  overflow: hidden;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-sheet small {
+  color: #6f6d78;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-no-sheets {
+  padding: 6px 8px;
+  color: #6f6d78;
+  font-size: 10px;
 }
 
 .wb-empty {

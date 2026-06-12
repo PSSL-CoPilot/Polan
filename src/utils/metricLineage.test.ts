@@ -41,7 +41,7 @@ const metric: MetricRecord = {
 }
 
 describe('metric lineage insertion', () => {
-  it('places the metric between source tables and the Power BI table', () => {
+  it('places the metric between the Power BI table and downstream assets', () => {
     const sheet = processSheet('Sales', sheetRows, columns)
     const graph = buildLineage(sheet.rows, [metric])
     const metricAsset = Array.from(graph.assets.values()).find(
@@ -50,16 +50,14 @@ describe('metric lineage insertion', () => {
 
     expect(metricAsset).toBeDefined()
     expect(metricAsset!.metric?.measureName).toBe('SUM(net_revenue)')
-    // BigQuery table now feeds the metric, and the metric feeds the table.
-    expect(metricAsset!.upstreamIds).toEqual(['bq-orders'])
-    expect(metricAsset!.downstreamIds).toEqual(['sales-model'])
-    // The Power BI table's only upstream is the metric (rerouted).
-    expect(graph.assets.get('sales-model')?.upstreamIds).toEqual([
-      metricAsset!.id,
-    ])
-    // Downstream chain is untouched: PBI → Dataset → Report.
+    // The Power BI table feeds the metric, which feeds the dataset.
+    expect(metricAsset!.upstreamIds).toEqual(['sales-model'])
+    expect(metricAsset!.downstreamIds).toEqual(['sales-dataset'])
+    // Upstream source tables remain connected directly to Power BI.
+    expect(graph.assets.get('sales-model')?.upstreamIds).toEqual(['bq-orders'])
+    // The downstream chain is PBI → Metric → Dataset → Report.
     expect(graph.assets.get('sales-model')?.downstreamIds).toEqual([
-      'sales-dataset',
+      metricAsset!.id,
     ])
     expect(graph.assets.get('sales-dataset')?.downstreamIds).toEqual([
       'revenue-report',
@@ -97,7 +95,7 @@ describe('metric lineage insertion', () => {
     })
   })
 
-  it('routes other upstream tables through the selected Immediate Table', () => {
+  it('connects the selected Immediate Table directly into Power BI once', () => {
     const sheet = processSheet(
       'Sales',
       [
@@ -123,12 +121,15 @@ describe('metric lineage insertion', () => {
       (relation) => `${relation.source}->${relation.target}`,
     )
 
-    expect(metricAsset?.upstreamIds).toEqual(['bq-orders'])
-    expect(relationKeys).toContain('bq-customers->bq-orders')
-    expect(relationKeys).toContain(`bq-orders->${metricAsset!.id}`)
-    expect(relationKeys).toContain(`${metricAsset!.id}->sales-model`)
-    expect(relationKeys).not.toContain('bq-orders->sales-model')
-    expect(relationKeys).not.toContain(`bq-customers->${metricAsset!.id}`)
+    expect(metricAsset?.upstreamIds).toEqual(['sales-model'])
+    expect(relationKeys).toContain('bq-orders->sales-model')
+    expect(relationKeys).toContain('bq-customers->sales-model')
+    expect(relationKeys).toContain(`sales-model->${metricAsset!.id}`)
+    expect(relationKeys).toContain(`${metricAsset!.id}->sales-dataset`)
+    expect(relationKeys).not.toContain('bq-customers->bq-orders')
+    expect(
+      relationKeys.filter((key) => key === 'bq-orders->sales-model'),
+    ).toHaveLength(1)
     expect(new Set(relationKeys).size).toBe(relationKeys.length)
 
     const focused = buildFocusedView(
@@ -171,7 +172,8 @@ describe('metric lineage insertion', () => {
       (asset) => asset.type === 'metric',
     )
 
-    expect(metricAsset?.upstreamIds).toEqual([
+    expect(metricAsset?.upstreamIds).toEqual(['sales-model'])
+    expect(graph.assets.get('sales-model')?.upstreamIds).toEqual([
       'bq-orders',
       'bq-customers',
     ])
@@ -220,19 +222,18 @@ describe('metric lineage insertion', () => {
     )
 
     expect(metricAsset?.upstreamIds).toEqual([
-      'bq-orders',
-      'bq-campaigns',
-    ])
-    expect(graph.assets.get('bq-orders')?.upstreamIds).toEqual([
-      'bq-customers',
-    ])
-    expect(graph.assets.get('bq-campaigns')?.upstreamIds).toEqual([
-      'bq-channels',
-    ])
-    expect(metricAsset?.downstreamIds).toEqual([
       'sales-model',
       'campaign-model',
     ])
+    expect(graph.assets.get('sales-model')?.upstreamIds).toEqual([
+      'bq-orders',
+      'bq-customers',
+    ])
+    expect(graph.assets.get('campaign-model')?.upstreamIds).toEqual([
+      'bq-campaigns',
+      'bq-channels',
+    ])
+    expect(metricAsset?.downstreamIds).toEqual([])
   })
 
   it('builds independent processed-data contexts for every metric', () => {

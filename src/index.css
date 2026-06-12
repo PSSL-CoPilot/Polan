@@ -55,8 +55,8 @@ select:focus-visible {
 
 .app-shell {
   min-height: 100vh;
-  display: grid;
-  grid-template-columns: var(--sidebar-w, 242px) minmax(0, 1fr);
+  display: flex;
+  align-items: stretch;
 }
 
 .sidebar {
@@ -206,6 +206,120 @@ select:focus-visible {
 
 .sidebar-resize-handle:hover {
   background: rgba(101, 87, 220, 0.4);
+}
+
+.workspace-panes {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: 100vh;
+  display: flex;
+  flex: 0 0 auto;
+  color: #fff;
+  background: var(--sidebar);
+  box-shadow: 10px 0 30px rgba(23, 23, 29, 0.08);
+}
+
+.workspace-pane {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--sidebar);
+  border-right: 1px solid #2b2a33;
+  overflow: hidden;
+  transition: width 200ms ease;
+}
+
+.workspace-main-pane {
+  width: 190px;
+}
+
+.workbooks-pane {
+  width: 238px;
+}
+
+.explorer-pane {
+  width: 260px;
+}
+
+.workspace-main-pane.is-collapsed {
+  width: 58px;
+}
+
+.workbooks-pane.is-collapsed,
+.explorer-pane.is-collapsed {
+  width: 42px;
+}
+
+.workspace-pane > .pane-header {
+  border-bottom: 1px solid #26252d;
+}
+
+.workspace-main-pane .sidebar-brand {
+  min-height: 71px;
+}
+
+.workspace-main-pane.is-collapsed .sidebar-brand {
+  padding-inline: 9px;
+}
+
+.workspace-main-pane.is-collapsed .brand {
+  justify-content: center;
+  padding: 0;
+}
+
+.workspace-main-pane.is-collapsed .brand-copy,
+.workspace-main-pane.is-collapsed .pane-title {
+  display: none;
+}
+
+.workspace-main-pane.is-collapsed .pane-header {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.workspace-main-pane.is-collapsed .workspace-nav-body {
+  padding-inline: 7px;
+}
+
+.workspace-main-pane.is-collapsed .nav-item {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.workspace-main-pane.is-collapsed .nav-item > span {
+  display: none;
+}
+
+.workspace-pane.is-collapsed:not(.workspace-main-pane) > .pane-header {
+  height: 100%;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 14px;
+  padding: 14px 0;
+}
+
+.workspace-pane.is-collapsed:not(.workspace-main-pane) .pane-title {
+  flex: 0 0 auto;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  white-space: nowrap;
+}
+
+.workspace-pane.is-collapsed:not(.workspace-main-pane) .pane-chevron {
+  transform: rotate(-90deg);
+}
+
+.workspace-nav-body {
+  padding-top: 10px;
+}
+
+.workspace-pane .pane-body-grow {
+  overflow-y: auto;
+}
+
+.workspace-pane .project-explorer {
+  height: 100%;
 }
 
 .brand-mark {
@@ -517,7 +631,7 @@ select:focus-visible {
 }
 
 .main-column {
-  grid-column: 2;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -2149,6 +2263,27 @@ tbody tr:hover td {
 }
 
 @media (max-width: 1280px) {
+  .workspace-main-pane {
+    width: 176px;
+  }
+
+  .workbooks-pane {
+    width: 214px;
+  }
+
+  .explorer-pane {
+    width: 232px;
+  }
+
+  .workspace-main-pane.is-collapsed {
+    width: 58px;
+  }
+
+  .workbooks-pane.is-collapsed,
+  .explorer-pane.is-collapsed {
+    width: 42px;
+  }
+
   .page-content {
     padding-inline: 24px;
   }

@@ -8,6 +8,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  type NodeChange,
   type NodeProps,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
@@ -42,11 +43,17 @@ import {
   pickDefaultFocus,
   type AssetNode,
   type ExpanderNode,
+  type FlowNode,
 } from '../utils/lineage'
 
 interface LineageGraphProps {
   rows: ProcessedRow[]
   metrics?: MetricRecord[]
+}
+
+interface ManualNodeLayout {
+  scope: string
+  positions: Record<string, { x: number; y: number }>
 }
 
 const assetConfig: Record<
@@ -178,8 +185,7 @@ function DetailsPanel({
     .map((id) => assets.get(id))
     .filter((value): value is AssetRecord => Boolean(value))
 
-  // For metric nodes: direct downstream is the Power BI tables; surface the
-  // datasets/reports that live further down the chain too.
+  // For metric nodes, surface datasets/reports further down the chain too.
   const transitiveDownstream = useMemo(() => {
     if (asset.type !== 'metric') return []
     const found: AssetRecord[] = []
@@ -266,7 +272,10 @@ function DetailsPanel({
             <div>
               <dt>Connected Power BI tables</dt>
               <dd className="wrap">
-                {downstream.map((item) => item.name).join(', ') || '—'}
+                {upstream
+                  .filter((item) => item.type === 'powerbi')
+                  .map((item) => item.name)
+                  .join(', ') || '—'}
               </dd>
             </div>
             {transitiveDownstream.length > 0 && (
@@ -358,6 +367,10 @@ function GraphCanvas({ rows, metrics = [] }: LineageGraphProps) {
   const [expansions, setExpansions] = useState<Record<string, number>>({})
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [manualLayout, setManualLayout] = useState<ManualNodeLayout>({
+    scope: '',
+    positions: {},
+  })
 
   // Reset the anchor whenever a new workbook / sheet is loaded.
   useEffect(() => {
@@ -386,6 +399,14 @@ function GraphCanvas({ rows, metrics = [] }: LineageGraphProps) {
     [effectiveFocusId, graph, expansions, selectedId],
   )
 
+  const graphScope = useMemo(
+    () =>
+      `${Array.from(graph.assets.keys()).join('|')}::${graph.relations
+        .map((relation) => `${relation.source}>${relation.target}`)
+        .join('|')}`,
+    [graph],
+  )
+  const layoutScope = `${graphScope}::${effectiveFocusId ?? ''}`
   const connected = getConnectedIds(selectedId, view?.edges ?? [])
 
   const focusOn = (id: string) => {
@@ -402,16 +423,40 @@ function GraphCanvas({ rows, metrics = [] }: LineageGraphProps) {
       [groupKey]: (current[groupKey] ?? 3) + 3,
     }))
 
+  const savedPositions =
+    manualLayout.scope === layoutScope ? manualLayout.positions : {}
   const nodes = (view?.nodes ?? []).map((node) => {
-    if (node.type === 'expander') return node
-    return {
+    const positionedNode = {
       ...node,
+      position: savedPositions[node.id] ?? node.position,
+    }
+    if (positionedNode.type === 'expander') return positionedNode
+    return {
+      ...positionedNode,
       data: {
-        ...node.data,
-        isDimmed: Boolean(selectedId && !connected.has(node.id)),
+        ...positionedNode.data,
+        isDimmed: Boolean(selectedId && !connected.has(positionedNode.id)),
       },
     }
   })
+
+  const handleNodesChange = (changes: NodeChange<FlowNode>[]) => {
+    const positionChanges = changes.filter(
+      (change) => change.type === 'position' && Boolean(change.position),
+    )
+    if (!positionChanges.length) return
+
+    setManualLayout((current) => {
+      const positions =
+        current.scope === layoutScope ? { ...current.positions } : {}
+      positionChanges.forEach((change) => {
+        if (change.type === 'position' && change.position) {
+          positions[change.id] = change.position
+        }
+      })
+      return { scope: layoutScope, positions }
+    })
+  }
 
   const edges = (view?.edges ?? []).map((edge) => ({
     ...edge,
@@ -519,6 +564,7 @@ function GraphCanvas({ rows, metrics = [] }: LineageGraphProps) {
           nodes={nodes}
           nodesConnectable={false}
           nodesDraggable
+          onNodesChange={handleNodesChange}
           onNodeClick={(_, node) => {
             if (node.type === 'expander') {
               expandGroup((node.data as { groupKey: string }).groupKey)

@@ -6,7 +6,7 @@ import {
   GitBranch,
   Sigma,
 } from 'lucide-react'
-import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import './index.css'
 import './workspace.css'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -61,11 +61,11 @@ function App() {
   const [deleteCandidateId, setDeleteCandidateId] = useState<string | null>(null)
   const [lineageFilter, setLineageFilter] = useState<string | null>(null)
   const [lineageMetricFilter, setLineageMetricFilter] = useState<string | null>(null)
-  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
-    const stored = localStorage.getItem('polan-sidebar-w')
-    return stored ? Math.max(200, Math.min(480, Number(stored))) : 242
-  })
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const pendingSheetSelectionRef = useRef<{
+    workbookId: string
+    sheetName: string
+  } | null>(null)
 
   const {
     project,
@@ -116,15 +116,29 @@ function App() {
 
   // Switching the active workbook resets sheet selection and all lineage filters.
   useEffect(() => {
-    setSelectedSheet('all')
+    const pending = pendingSheetSelectionRef.current
+    setSelectedSheet(
+      pending?.workbookId === activeWorkbookId ? pending.sheetName : 'all',
+    )
+    pendingSheetSelectionRef.current = null
     setLineageFilter(null)
     setLineageMetricFilter(null)
   }, [activeWorkbookId])
 
-  const handleSidebarWidthChange = useCallback((w: number) => {
-    setSidebarWidth(w)
-    localStorage.setItem('polan-sidebar-w', String(w))
-  }, [])
+  const handleSelectWorkbookSheet = (
+    workbookId: string,
+    sheetName: string,
+  ) => {
+    if (workbookId === activeWorkbookId) {
+      setSelectedSheet(sheetName)
+      setLineageFilter(null)
+      setLineageMetricFilter(null)
+    } else {
+      pendingSheetSelectionRef.current = { workbookId, sheetName }
+      selectWorkbook(workbookId)
+    }
+    setActiveView('lineage')
+  }
 
   const validSheets =
     workbook?.sheets.filter((sheet) => !sheet.errors.length) ?? []
@@ -486,10 +500,7 @@ function App() {
   }
 
   return (
-    <div
-      className="app-shell"
-      style={{ '--sidebar-w': `${sidebarWidth}px` } as React.CSSProperties}
-    >
+    <div className="app-shell">
       <Sidebar
         activeMetricId={project.selectedMetricId}
         activeView={activeView}
@@ -506,12 +517,12 @@ function App() {
         onRenameWorkbook={renameWorkbook}
         onRequestDeleteWorkbook={setDeleteCandidateId}
         onSelectMetric={handleSelectMetric}
+        onSelectSheet={handleSelectWorkbookSheet}
         onSelectWorkbook={selectWorkbook}
         onToggleView={toggleView}
         onUploadWorkbook={() => fileInputRef.current?.click()}
-        onWidthChange={handleSidebarWidthChange}
         project={project}
-        width={sidebarWidth}
+        selectedSheet={selectedSheet}
         workbooks={workbooks}
       />
       <div className="main-column">

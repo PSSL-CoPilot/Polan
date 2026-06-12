@@ -357,8 +357,7 @@ export function MetricWorkspace({
           <div className="connect-hint">
             <GitBranch size={14} />
             This metric exists but is not part of the lineage yet — connect at
-            least one table above and it will appear between the source tables
-            and the Power BI table.
+            least one table above and it will appear after the Power BI table.
           </div>
         )}
       </section>
@@ -370,8 +369,8 @@ export function MetricWorkspace({
               <span className="eyebrow">Metric routing</span>
               <h2>Immediate Tables</h2>
               <p className="section-sub">
-                Choose the impacted table that should feed directly into this
-                metric for each connected sheet.
+                Choose the impacted table that should feed directly into the
+                Power BI table for each connected sheet.
               </p>
             </div>
           </div>

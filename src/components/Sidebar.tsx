@@ -7,7 +7,12 @@ import {
   Plus,
   TableProperties,
 } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import {
+  useState,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from 'react'
 import type { AppView, ProjectState, UploadedWorkbook } from '../types'
 import { ProjectExplorer } from './ProjectExplorer'
 import { WorkbookList } from './WorkbookList'
@@ -20,7 +25,9 @@ interface SidebarProps {
   activeMetricId: string | null
   workbooks: UploadedWorkbook[]
   activeWorkbookId: string | null
+  selectedSheet: string
   onSelectWorkbook: (id: string) => void
+  onSelectSheet: (workbookId: string, sheetName: string) => void
   onRenameWorkbook: (id: string, name: string) => void
   onRequestDeleteWorkbook: (id: string) => void
   onUploadWorkbook: () => void
@@ -33,10 +40,6 @@ interface SidebarProps {
   onRenameMetric: (metricId: string, name: string) => void
   onDeleteMetric: (metricId: string) => void
   onCreateMetric: (viewId: string) => void
-  /** Current sidebar width in px. */
-  width: number
-  /** Called while the user drags the resize handle. */
-  onWidthChange: (w: number) => void
 }
 
 const NAV_ITEMS: Array<{
@@ -51,7 +54,11 @@ const NAV_ITEMS: Array<{
   { id: 'metric', label: 'Metric workspace', description: 'Metric definitions', icon: TableProperties },
 ]
 
-/** Thin chevron button used for collapsing/expanding each pane. */
+const readPaneState = (key: string, fallback: boolean) => {
+  const stored = localStorage.getItem(key)
+  return stored === null ? fallback : stored === 'true'
+}
+
 function PaneHeader({
   title,
   open,
@@ -61,22 +68,35 @@ function PaneHeader({
   title: string
   open: boolean
   onToggle: () => void
-  action?: { label: string; icon: React.ReactNode; onClick: () => void }
+  action?: { label: string; icon: ReactNode; onClick: () => void }
 }) {
   return (
-    <div className="pane-header" onClick={onToggle} role="button" tabIndex={0}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onToggle() }}
+    <div
+      className="pane-header"
+      onClick={onToggle}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onToggle()
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      title={open ? `Collapse ${title}` : `Expand ${title}`}
     >
       <ChevronDown
         className={`pane-chevron${open ? '' : ' pane-collapsed'}`}
-        size={12}
+        size={13}
       />
       <span className="pane-title">{title}</span>
-      {action && (
+      {action && open && (
         <button
           aria-label={action.label}
           className="pane-action-btn"
-          onClick={(e) => { e.stopPropagation(); action.onClick() }}
+          onClick={(event) => {
+            event.stopPropagation()
+            action.onClick()
+          }}
           title={action.label}
           type="button"
         >
@@ -95,7 +115,9 @@ export function Sidebar({
   activeMetricId,
   workbooks,
   activeWorkbookId,
+  selectedSheet,
   onSelectWorkbook,
+  onSelectSheet,
   onRenameWorkbook,
   onRequestDeleteWorkbook,
   onUploadWorkbook,
@@ -108,114 +130,125 @@ export function Sidebar({
   onRenameMetric,
   onDeleteMetric,
   onCreateMetric,
-  width,
-  onWidthChange,
 }: SidebarProps) {
-  const [navOpen, setNavOpen] = useState(true)
-  const [workbooksOpen, setWorkbooksOpen] = useState(true)
-  const [explorerOpen, setExplorerOpen] = useState(true)
-
-  const handleResizeMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault()
-      const startX = e.clientX
-      const startW = width
-
-      const onMove = (ev: MouseEvent) => {
-        const next = Math.max(200, Math.min(480, startW + ev.clientX - startX))
-        onWidthChange(next)
-      }
-      const onUp = () => {
-        document.removeEventListener('mousemove', onMove)
-        document.removeEventListener('mouseup', onUp)
-        document.body.style.cursor = ''
-        document.body.style.userSelect = ''
-      }
-
-      document.body.style.cursor = 'col-resize'
-      document.body.style.userSelect = 'none'
-      document.addEventListener('mousemove', onMove)
-      document.addEventListener('mouseup', onUp)
-    },
-    [width, onWidthChange],
+  const [navOpen, setNavOpen] = useState(() =>
+    readPaneState('polan-pane-main', true),
+  )
+  const [workbooksOpen, setWorkbooksOpen] = useState(() =>
+    readPaneState('polan-pane-workbooks', true),
+  )
+  const [explorerOpen, setExplorerOpen] = useState(() =>
+    readPaneState('polan-pane-explorer', true),
   )
 
+  const togglePane = (
+    key: string,
+    setOpen: Dispatch<SetStateAction<boolean>>,
+  ) => {
+    setOpen((current) => {
+      const next = !current
+      localStorage.setItem(key, String(next))
+      window.setTimeout(() => window.dispatchEvent(new Event('resize')), 220)
+      return next
+    })
+  }
+
   return (
-    <aside className="sidebar" style={{ width }}>
-      {/* ── Brand ── */}
-      <div className="sidebar-brand">
-        <div className="brand">
-          <div className="brand-mark" aria-hidden="true">
-            <ArrowUpDown size={18} strokeWidth={2.4} />
-          </div>
-          <div>
-            <strong>Polan</strong>
-            <span className="brand-byline">by Polestar Analytics</span>
+    <aside className="workspace-panes" aria-label="Workspace panels">
+      <section
+        className={`workspace-pane workspace-main-pane ${
+          navOpen ? 'is-open' : 'is-collapsed'
+        }`}
+      >
+        <div className="sidebar-brand">
+          <div className="brand">
+            <div className="brand-mark" aria-hidden="true">
+              <ArrowUpDown size={18} strokeWidth={2.4} />
+            </div>
+            <div className="brand-copy">
+              <strong>Polan</strong>
+              <span className="brand-byline">by Polestar Analytics</span>
+            </div>
           </div>
         </div>
-      </div>
-
-      {/* ── Navigation pane ── */}
-      <div className="sidebar-pane">
         <PaneHeader
-          onToggle={() => setNavOpen((v) => !v)}
+          onToggle={() => togglePane('polan-pane-main', setNavOpen)}
           open={navOpen}
-          title="Workspace"
+          title="Main workspace"
         />
-        {navOpen && (
-          <div className="pane-body">
-            <nav className="sidebar-nav" aria-label="Workspace navigation">
-              {NAV_ITEMS.map((item) => {
-                const Icon = item.icon
-                const disabled = !hasWorkbook
-                return (
-                  <button
-                    className={`nav-item ${activeView === item.id ? 'active' : ''}`}
-                    disabled={disabled}
-                    key={item.id}
-                    onClick={() => onChange(item.id)}
-                    type="button"
-                  >
-                    <Icon size={19} />
-                    <span>
-                      <strong>{item.label}</strong>
-                      <small>{item.description}</small>
-                    </span>
-                  </button>
-                )
-              })}
-            </nav>
-          </div>
-        )}
-      </div>
+        <div className="pane-body workspace-nav-body">
+          <nav className="sidebar-nav" aria-label="Workspace navigation">
+            {NAV_ITEMS.map((item) => {
+              const Icon = item.icon
+              const disabled = !hasWorkbook
+              return (
+                <button
+                  className={`nav-item ${activeView === item.id ? 'active' : ''}`}
+                  disabled={disabled}
+                  key={item.id}
+                  onClick={() => onChange(item.id)}
+                  title={!navOpen ? item.label : undefined}
+                  type="button"
+                >
+                  <Icon size={19} />
+                  <span>
+                    <strong>{item.label}</strong>
+                    <small>{item.description}</small>
+                  </span>
+                </button>
+              )
+            })}
+          </nav>
+        </div>
+      </section>
 
-      {/* ── Workbooks pane ── */}
-      <div className="sidebar-pane">
+      <section
+        className={`workspace-pane workbooks-pane ${
+          workbooksOpen ? 'is-open' : 'is-collapsed'
+        }`}
+      >
         <PaneHeader
-          action={{ label: 'Upload workbook', icon: <Plus size={12} />, onClick: onUploadWorkbook }}
-          onToggle={() => setWorkbooksOpen((v) => !v)}
+          action={{
+            label: 'Upload workbook',
+            icon: <Plus size={12} />,
+            onClick: onUploadWorkbook,
+          }}
+          onToggle={() =>
+            togglePane('polan-pane-workbooks', setWorkbooksOpen)
+          }
           open={workbooksOpen}
           title="Workbooks"
         />
         {workbooksOpen && (
-          <div className="pane-body">
+          <div className="pane-body pane-body-grow">
             <WorkbookList
               activeWorkbookId={activeWorkbookId}
               onRename={onRenameWorkbook}
               onRequestDelete={onRequestDeleteWorkbook}
               onSelect={onSelectWorkbook}
+              onSelectSheet={onSelectSheet}
               onUpload={onUploadWorkbook}
+              selectedSheet={selectedSheet}
               workbooks={workbooks}
             />
           </div>
         )}
-      </div>
+      </section>
 
-      {/* ── Project Explorer pane ── */}
-      <div className="sidebar-pane pane-explorer">
+      <section
+        className={`workspace-pane explorer-pane ${
+          explorerOpen ? 'is-open' : 'is-collapsed'
+        }`}
+      >
         <PaneHeader
-          action={{ label: 'Add view', icon: <Plus size={12} />, onClick: onAddView }}
-          onToggle={() => setExplorerOpen((v) => !v)}
+          action={{
+            label: 'Add view',
+            icon: <Plus size={12} />,
+            onClick: onAddView,
+          }}
+          onToggle={() =>
+            togglePane('polan-pane-explorer', setExplorerOpen)
+          }
           open={explorerOpen}
           title="Project Explorer"
         />
@@ -236,14 +269,7 @@ export function Sidebar({
             />
           </div>
         )}
-      </div>
-
-      {/* ── Resize handle ── */}
-      <div
-        aria-hidden="true"
-        className="sidebar-resize-handle"
-        onMouseDown={handleResizeMouseDown}
-      />
+      </section>
     </aside>
   )
 }

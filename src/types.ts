@@ -98,7 +98,7 @@ export interface MetricRecord {
   description?: string
   /** Workbook sheet names; each sheet represents one Power BI table. */
   connectedSheets: string[]
-  /** Sheet name -> selected upstream table placed immediately before the metric. */
+  /** Sheet name -> selected upstream table feeding the Power BI table. */
   immediateTables: Record<string, string>
 }
 

@@ -191,11 +191,11 @@ function chainDatasetsToReports(
 /**
  * Inject project metrics into the relation set as first-class nodes:
  *
- *   BigQuery / source tables → Metric → Power BI table → Dataset → Report
+ *   BigQuery / source tables → Power BI table → Metric → Dataset → Report
  *
  * Each metric is connected to the Power BI tables found in its connected
- * workbook sheets. Existing upstream edges into those tables are rerouted
- * through the metric; everything else is untouched.
+ * workbook sheets. Existing downstream edges from those tables are rerouted
+ * through the metric; upstream edges stay connected to the Power BI table.
  */
 function insertMetricNodesWithoutImmediateTables(
   rows: ProcessedRow[],
@@ -250,23 +250,31 @@ function insertMetricNodesWithoutImmediateTables(
 
   relations.forEach((relation) => {
     const tableMetrics =
-      relation.direction === 'upstream'
-        ? metricsByTable.get(relation.target)
+      relation.direction === 'downstream'
+        ? metricsByTable.get(relation.source)
         : undefined
     if (tableMetrics?.length) {
-      // Source table fed a Power BI table directly — route through metrics.
-      tableMetrics.forEach((metricId) =>
-        push({ source: relation.source, target: metricId, direction: 'upstream' }),
-      )
+      tableMetrics.forEach((metricId) => {
+        push({
+          source: relation.source,
+          target: metricId,
+          direction: 'downstream',
+        })
+        push({
+          source: metricId,
+          target: relation.target,
+          direction: 'downstream',
+        })
+      })
       return
     }
     push(relation)
   })
 
-  // Metric → Power BI table (even when the table had no upstream sources).
+  // Keep the metric visible even when the table has no downstream assets.
   metricsByTable.forEach((metricIds, tableId) => {
     metricIds.forEach((metricId) =>
-      push({ source: metricId, target: tableId, direction: 'upstream' }),
+      push({ source: tableId, target: metricId, direction: 'downstream' }),
     )
   })
 
@@ -385,59 +393,34 @@ function insertMetricNodes(
 
   relations.forEach((relation) => {
     const routes =
-      relation.direction === 'upstream'
-        ? routesByTable.get(relation.target)
+      relation.direction === 'downstream'
+        ? routesByTable.get(relation.source)
         : undefined
     if (!routes?.length) {
       push(relation)
       return
     }
 
-    let rerouted = false
     routes.forEach((route) => {
-      const applies =
-        !route.immediateId || route.upstreamIds.has(relation.source)
-      if (!applies) return
-      rerouted = true
-
-      if (route.immediateId) {
-        if (relation.source !== route.immediateId) {
-          push({
-            source: relation.source,
-            target: route.immediateId,
-            direction: 'upstream',
-          })
-        }
-        push({
-          source: route.immediateId,
-          target: route.metricId,
-          direction: 'upstream',
-        })
-      } else {
-        push({
-          source: relation.source,
-          target: route.metricId,
-          direction: 'upstream',
-        })
-      }
+      push({
+        source: relation.source,
+        target: route.metricId,
+        direction: 'downstream',
+      })
+      push({
+        source: route.metricId,
+        target: relation.target,
+        direction: 'downstream',
+      })
     })
-
-    if (!rerouted) push(relation)
   })
 
   routesByTable.forEach((routes, tableId) => {
     routes.forEach((route) => {
-      if (route.immediateId) {
-        push({
-          source: route.immediateId,
-          target: route.metricId,
-          direction: 'upstream',
-        })
-      }
       push({
-        source: route.metricId,
-        target: tableId,
-        direction: 'upstream',
+        source: tableId,
+        target: route.metricId,
+        direction: 'downstream',
       })
     })
   })
@@ -543,19 +526,19 @@ export function buildLineage(
   // Lightweight column layout retained for the overview / unit tests.
   const columns: AssetType[] = [
     'bigquery',
-    'metric',
     'powerbi',
+    'metric',
     'dataset',
     'report',
     'unknown',
   ]
   const columnX: Record<AssetType, number> = {
     bigquery: 40,
-    metric: 200,
-    powerbi: 355,
-    dataset: 670,
-    report: 985,
-    unknown: 670,
+    powerbi: 330,
+    metric: 620,
+    dataset: 910,
+    report: 1200,
+    unknown: 910,
   }
 
   const grouped = new Map<AssetType, AssetRecord[]>()
@@ -634,8 +617,8 @@ export function pickDefaultFocus(assets: Map<string, AssetRecord>): string | nul
 
 const FOCUS_BATCH = 3
 const MAX_DEPTH = 3
-const COLUMN_PITCH = 372
-const ROW_GAP = 104
+const COLUMN_PITCH = 320
+const ROW_GAP = 92
 
 interface PlacedItem {
   level: number
