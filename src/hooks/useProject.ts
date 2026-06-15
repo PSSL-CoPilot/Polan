@@ -6,6 +6,7 @@ import {
   loadProjectFromLocal,
   saveProjectToLocal,
 } from '../utils/storage'
+import { toImmediateTableList } from '../utils/metricImmediateTable'
 
 export interface MetricDraft {
   name: string
@@ -193,8 +194,8 @@ export function useProject() {
     [],
   )
 
-  const setImmediateTable = useCallback(
-    (metricId: string, sheet: string, table: string | null) => {
+  const setImmediateTables = useCallback(
+    (metricId: string, sheet: string, tables: string[]) => {
       const sheetName = sheet.trim()
       if (!sheetName) return
       setProject((current) => ({
@@ -204,8 +205,8 @@ export function useProject() {
           metrics: view.metrics.map((metric) => {
             if (metric.id !== metricId) return metric
             const immediateTables = { ...(metric.immediateTables ?? {}) }
-            const value = table?.trim()
-            if (value) immediateTables[sheetName] = value
+            const cleaned = toImmediateTableList(tables)
+            if (cleaned.length) immediateTables[sheetName] = cleaned
             else delete immediateTables[sheetName]
             return { ...metric, immediateTables }
           }),
@@ -233,7 +234,7 @@ export function useProject() {
     selectMetric,
     setConnectedSheets,
     toggleConnectedSheet,
-    setImmediateTable,
+    setImmediateTables,
     replaceProject,
   }
 }

@@ -3,8 +3,9 @@ import type { MetricRecord, OriginalRow } from '../types'
 import {
   immediateTableExists,
   immediateTableOptions,
-  metricImmediateTable,
-  resolveImmediateUpstreamAsset,
+  metricImmediateTables,
+  resolveImmediateUpstreamAssets,
+  toImmediateTableList,
 } from './metricImmediateTable'
 import { processSheet } from './workbook'
 
@@ -45,39 +46,55 @@ describe('metric Immediate Table helpers', () => {
     ])
   })
 
-  it('resolves selections case-insensitively only from upstream rows', () => {
+  it('resolves multiple selections case-insensitively from upstream rows only', () => {
     const sheet = processSheet(
       'Sales',
-      [input('bq_orders'), input('Revenue Report', 'downstream')],
+      [
+        input('bq_orders'),
+        input('bq_customers'),
+        input('Revenue Report', 'downstream'),
+      ],
       columns,
     )
 
+    // Resolves upstream matches, drops downstream/unknown, de-duplicates.
     expect(
-      resolveImmediateUpstreamAsset(
-        sheet.rows,
-        'Sales',
+      resolveImmediateUpstreamAssets(sheet.rows, 'Sales', [
         ' BQ_ORDERS ',
-      ),
-    ).toBe('bq_orders')
-    expect(
-      resolveImmediateUpstreamAsset(
-        sheet.rows,
-        'Sales',
+        'bq_customers',
+        'bq_orders',
         'Revenue Report',
-      ),
-    ).toBeUndefined()
+        'missing_table',
+      ]),
+    ).toEqual(['bq_orders', 'bq_customers'])
+    expect(resolveImmediateUpstreamAssets(sheet.rows, 'Sales', [])).toEqual([])
   })
 
-  it('reads selections and detects missing saved values safely', () => {
+  it('reads array selections, migrates legacy strings, and detects missing values', () => {
     const metric: MetricRecord = {
       id: 'metric',
       name: 'Revenue',
       measureName: 'SUM(revenue)',
       connectedSheets: ['Sales'],
-      immediateTables: { Sales: 'bq_orders' },
+      immediateTables: { Sales: ['bq_orders', 'bq_customers'] },
     }
 
-    expect(metricImmediateTable(metric, 'Sales')).toBe('bq_orders')
+    expect(metricImmediateTables(metric, 'Sales')).toEqual([
+      'bq_orders',
+      'bq_customers',
+    ])
+    // Legacy single-string value is normalized to a one-element list.
+    expect(
+      metricImmediateTables(
+        {
+          ...metric,
+          immediateTables: { Sales: 'bq_orders' as unknown as string[] },
+        },
+        'Sales',
+      ),
+    ).toEqual(['bq_orders'])
+    expect(toImmediateTableList(' bq_orders ')).toEqual(['bq_orders'])
+    expect(toImmediateTableList(['a', 'A', ' a ', '', 7])).toEqual(['a'])
     expect(immediateTableExists(['BQ_ORDERS'], 'bq_orders')).toBe(true)
     expect(immediateTableExists(['bq_customers'], 'bq_orders')).toBe(false)
   })

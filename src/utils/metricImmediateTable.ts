@@ -16,12 +16,32 @@ export function immediateTableOptions(sheet: SheetData): string[] {
   )
 }
 
-export function metricImmediateTable(
+/**
+ * Normalize a stored Immediate Table value into a clean, de-duplicated list.
+ * Accepts both the legacy single-string shape and the new string-array shape,
+ * so old `.polan.json` projects migrate transparently.
+ */
+export function toImmediateTableList(value: unknown): string[] {
+  const raw = Array.isArray(value) ? value : [value]
+  const seen = new Set<string>()
+  const list: string[] = []
+  raw.forEach((entry) => {
+    if (typeof entry !== 'string') return
+    const trimmed = entry.trim()
+    const key = normalized(trimmed)
+    if (!trimmed || seen.has(key)) return
+    seen.add(key)
+    list.push(trimmed)
+  })
+  return list
+}
+
+/** Selected Immediate Tables for a metric-sheet connection (possibly empty). */
+export function metricImmediateTables(
   metric: MetricRecord,
   sheetName: string,
-): string | undefined {
-  const value = metric.immediateTables?.[sheetName]?.trim()
-  return value || undefined
+): string[] {
+  return toImmediateTableList(metric.immediateTables?.[sheetName])
 }
 
 export function immediateTableExists(
@@ -33,17 +53,32 @@ export function immediateTableExists(
   return options.some((option) => normalized(option) === key)
 }
 
-export function resolveImmediateUpstreamAsset(
+/**
+ * Resolve the selected Immediate Tables to the actual upstream Impacted Asset
+ * names present in the sheet. Selections that no longer exist (or are not
+ * upstream rows) are dropped, so a missing table degrades gracefully.
+ */
+export function resolveImmediateUpstreamAssets(
   rows: ProcessedRow[],
   sheetName: string,
-  selected: string | undefined,
-): string | undefined {
-  if (!selected) return undefined
-  const selectedKey = normalized(selected)
-  return rows.find(
-    (row) =>
-      row.sheet === sheetName &&
-      row.direction.trim().toLowerCase() === 'upstream' &&
-      normalized(row.impactedAsset) === selectedKey,
-  )?.impactedAsset
+  selected: string[],
+): string[] {
+  if (!selected.length) return []
+  const seen = new Set<string>()
+  const resolved: string[] = []
+  selected.forEach((value) => {
+    const selectedKey = normalized(value)
+    const match = rows.find(
+      (row) =>
+        row.sheet === sheetName &&
+        row.direction.trim().toLowerCase() === 'upstream' &&
+        normalized(row.impactedAsset) === selectedKey,
+    )?.impactedAsset
+    if (!match) return
+    const matchKey = normalized(match)
+    if (seen.has(matchKey)) return
+    seen.add(matchKey)
+    resolved.push(match)
+  })
+  return resolved
 }

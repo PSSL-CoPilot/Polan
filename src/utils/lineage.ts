@@ -7,8 +7,9 @@ import type {
   Relation,
 } from '../types'
 import {
-  metricImmediateTable,
-  resolveImmediateUpstreamAsset,
+  metricImmediateTables,
+  resolveImmediateUpstreamAssets,
+  toImmediateTableList,
 } from './metricImmediateTable'
 
 /**
@@ -283,7 +284,8 @@ function insertMetricNodesWithoutImmediateTables(
 
 interface MetricTableRoute {
   metricId: string
-  immediateId?: string
+  /** Immediate Tables feeding this Power BI table directly (deduped, ordered). */
+  immediateIds: string[]
   upstreamIds: Set<string>
 }
 
@@ -295,8 +297,8 @@ function insertMetricNodes(
 ): Relation[] {
   if (
     !metrics.some((metric) =>
-      Object.values(metric.immediateTables ?? {}).some((value) =>
-        value.trim(),
+      Object.values(metric.immediateTables ?? {}).some(
+        (value) => toImmediateTableList(value).length > 0,
       ),
     )
   ) {
@@ -339,34 +341,29 @@ function insertMetricNodes(
     let connected = false
 
     metric.connectedSheets.forEach((sheet) => {
-      const selected = metricImmediateTable(metric, sheet)
-      const resolved = resolveImmediateUpstreamAsset(rows, sheet, selected)
-      const immediateId = resolved ? nodeId(resolved) : undefined
+      const selected = metricImmediateTables(metric, sheet)
+      const resolved = resolveImmediateUpstreamAssets(rows, sheet, selected)
+      const immediateIds = resolved.map((name) => nodeId(name))
 
       sheetTables.get(sheet)?.forEach((tableId) => {
         connected = true
         const upstreamIds =
           upstreamBySheetTable.get(sheetTableKey(sheet, tableId)) ??
           new Set<string>()
-        const routes = routesByTable.get(tableId) ?? []
-        const safeImmediateId =
-          immediateId && immediateId !== tableId && assets.has(immediateId)
-            ? immediateId
-            : undefined
-        const existing = routes.find(
-          (route) =>
-            route.metricId === metricId &&
-            route.immediateId === safeImmediateId,
+        // Keep only Immediate Tables that exist and are not the table itself.
+        const safeImmediateIds = immediateIds.filter(
+          (id) => id !== tableId && assets.has(id),
         )
-        if (existing) {
-          upstreamIds.forEach((id) => existing.upstreamIds.add(id))
-        } else {
-          routes.push({
-            metricId,
-            immediateId: safeImmediateId,
-            upstreamIds: new Set(upstreamIds),
-          })
+        const routes = routesByTable.get(tableId) ?? []
+        let route = routes.find((entry) => entry.metricId === metricId)
+        if (!route) {
+          route = { metricId, immediateIds: [], upstreamIds: new Set() }
+          routes.push(route)
         }
+        upstreamIds.forEach((id) => route!.upstreamIds.add(id))
+        safeImmediateIds.forEach((id) => {
+          if (!route!.immediateIds.includes(id)) route!.immediateIds.push(id)
+        })
         routesByTable.set(tableId, routes)
       })
     })
@@ -391,11 +388,11 @@ function insertMetricNodes(
     next.push(relation)
   }
 
-  // For an upstream edge `source → table`, decide how the Immediate Table
-  // reshapes it. Only the Immediate Table feeds the Power BI table directly
-  // (that edge is emitted in the final block); its sibling upstream sources are
-  // rerouted to flow *through* the Immediate Table instead. A source that also
-  // belongs to a route without an Immediate Table keeps its direct edge.
+  // For an upstream edge `source → table`, decide how the Immediate Tables
+  // reshape it. Each Immediate Table feeds the Power BI table directly (those
+  // edges are emitted in the final block); sibling upstream sources are
+  // rerouted to flow *through* the first Immediate Table instead. A source that
+  // also belongs to a route without any Immediate Table keeps its direct edge.
   const immediateReroute = (
     routes: MetricTableRoute[],
     source: string,
@@ -404,12 +401,12 @@ function insertMetricNodes(
     let reroute: string | undefined
     let staysDirect = false
     routes.forEach((route) => {
-      if (route.immediateId === source) {
+      if (route.immediateIds.includes(source)) {
         isImmediate = true
         return
       }
       if (!route.upstreamIds.has(source)) return
-      if (route.immediateId) reroute ??= route.immediateId
+      if (route.immediateIds.length) reroute ??= route.immediateIds[0]
       else staysDirect = true
     })
     return { isImmediate, reroute: staysDirect ? undefined : reroute }
@@ -439,12 +436,12 @@ function insertMetricNodes(
 
     // Upstream edge into a Power BI table.
     const routes = routesByTable.get(relation.target)
-    if (!routes?.some((route) => route.immediateId)) {
+    if (!routes?.some((route) => route.immediateIds.length)) {
       push(relation)
       return
     }
     const { isImmediate, reroute } = immediateReroute(routes, relation.source)
-    // The Immediate Table itself feeds the Power BI table via the final block.
+    // Immediate Tables feed the Power BI table via the final block.
     if (isImmediate) return
     if (reroute) {
       push({ source: relation.source, target: reroute, direction: 'upstream' })
@@ -455,15 +452,15 @@ function insertMetricNodes(
 
   routesByTable.forEach((routes, tableId) => {
     routes.forEach((route) => {
-      // Immediate Table → Power BI table (upstream), so the selected table
-      // appears in the path directly before the Power BI table.
-      if (route.immediateId) {
+      // Immediate Table(s) → Power BI table (upstream), so every selected table
+      // appears in the path directly before the same Power BI table node.
+      route.immediateIds.forEach((immediateId) => {
         push({
-          source: route.immediateId,
+          source: immediateId,
           target: tableId,
           direction: 'upstream',
         })
-      }
+      })
       push({
         source: tableId,
         target: route.metricId,

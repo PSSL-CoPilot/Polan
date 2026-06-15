@@ -519,5 +519,8 @@ export async function exportRows(
       'Processed Lineage',
     )
   }
-  XLSX.writeFile(workbook, 'processed-lineage.xlsx')
+  // `compression: true` switches the .xlsx ZIP from STORED to DEFLATE, which
+  // shrinks styled exports dramatically (~80%) with zero data, style, hyperlink,
+  // border, filter, or metric-sheet loss.
+  XLSX.writeFile(workbook, 'processed-lineage.xlsx', { compression: true })
 }

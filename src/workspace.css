@@ -882,6 +882,75 @@
   font-size: 9.5px;
 }
 
+/* Multiple Immediate Tables per connected sheet. */
+.immediate-tables-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.immediate-table-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.immediate-table-row .immediate-table-select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.immediate-table-remove {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 39px;
+  color: #96929e;
+  background: #fff;
+  border: 1px solid #ddd9e4;
+  border-radius: 8px;
+  transition: 140ms ease;
+}
+
+.immediate-table-remove:hover {
+  color: #b4453e;
+  border-color: #e7b3ae;
+  background: #fdf3f2;
+}
+
+.immediate-table-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 6px 10px;
+  color: #6557dc;
+  background: #f3f1fd;
+  border: 1px dashed #c3b9f1;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  transition: 140ms ease;
+}
+
+.immediate-table-add:hover:not(:disabled) {
+  background: #ebe7fb;
+  border-color: #a594ec;
+}
+
+.immediate-table-add:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.immediate-table-empty-state {
+  color: #8a8792;
+  font-size: 9.5px;
+  font-style: italic;
+}
+
 .metric-missing {
   display: flex;
   flex-direction: column;

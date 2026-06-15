@@ -102,7 +102,7 @@ function App() {
     selectMetric,
     toggleConnectedSheet,
     setConnectedSheets,
-    setImmediateTable,
+    setImmediateTables,
     replaceProject,
   } = useProject()
 
@@ -383,8 +383,8 @@ function App() {
             onEdit={() => openEditMetric(activeMetric)}
             onGoToUpload={() => setActiveView('upload')}
             onOpenLineage={() => setActiveView('lineage')}
-            onSetImmediateTable={(sheet, table) =>
-              setImmediateTable(activeMetric.id, sheet, table)
+            onSetImmediateTables={(sheet, tables) =>
+              setImmediateTables(activeMetric.id, sheet, tables)
             }
             onToggleSheet={(sheet) =>
               toggleConnectedSheet(activeMetric.id, sheet)

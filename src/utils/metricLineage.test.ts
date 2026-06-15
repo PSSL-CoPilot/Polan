@@ -111,7 +111,7 @@ describe('metric lineage insertion', () => {
     )
     const configuredMetric: MetricRecord = {
       ...metric,
-      immediateTables: { Sales: ' BQ_ORDERS ' },
+      immediateTables: { Sales: [' BQ_ORDERS '] },
     }
     const graph = buildLineage(sheet.rows, [configuredMetric])
     const metricAsset = Array.from(graph.assets.values()).find(
@@ -167,7 +167,7 @@ describe('metric lineage insertion', () => {
     const graph = buildLineage(sheet.rows, [
       {
         ...metric,
-        immediateTables: { Sales: 'removed_table' },
+        immediateTables: { Sales: ['removed_table'] },
       },
     ])
     const metricAsset = Array.from(graph.assets.values()).find(
@@ -214,8 +214,8 @@ describe('metric lineage insertion', () => {
         ...metric,
         connectedSheets: ['Sales', 'Marketing'],
         immediateTables: {
-          Sales: 'bq_orders',
-          Marketing: 'bq_campaigns',
+          Sales: ['bq_orders'],
+          Marketing: ['bq_campaigns'],
         },
       },
     ])
@@ -238,6 +238,56 @@ describe('metric lineage insertion', () => {
       'bq-channels',
     ])
     expect(metricAsset?.downstreamIds).toEqual([])
+  })
+
+  it('fans multiple Immediate Tables into the same Power BI table', () => {
+    const sheet = processSheet(
+      'Sales',
+      [
+        sheetRows[0], // bq_orders (upstream)
+        {
+          ...sheetRows[0],
+          'Impacted Asset': 'bq_customers',
+          'Qualified Name': 'a/b/c/proj/sales_USL/customers',
+        },
+        {
+          ...sheetRows[0],
+          'Impacted Asset': 'bq_returns',
+          'Qualified Name': 'a/b/c/proj/sales_USL/returns',
+        },
+        ...sheetRows.slice(1), // Sales Dataset + Revenue Report (downstream)
+      ],
+      columns,
+    )
+    const graph = buildLineage(sheet.rows, [
+      {
+        ...metric,
+        // Two Immediate Tables; bq_returns is a normal sibling upstream.
+        immediateTables: { Sales: ['bq_orders', 'bq_customers'] },
+      },
+    ])
+    const metricAsset = Array.from(graph.assets.values()).find(
+      (asset) => asset.type === 'metric',
+    )
+    const relationKeys = graph.relations.map(
+      (relation) => `${relation.source}->${relation.target}`,
+    )
+
+    // Both Immediate Tables connect directly into the same Power BI table.
+    expect(relationKeys).toContain('bq-orders->sales-model')
+    expect(relationKeys).toContain('bq-customers->sales-model')
+    // The sibling upstream is routed through the first Immediate Table, not
+    // directly into the Power BI table.
+    expect(relationKeys).toContain('bq-returns->bq-orders')
+    expect(relationKeys).not.toContain('bq-returns->sales-model')
+    // Metric stays connected to the Power BI table and the dataset.
+    expect(relationKeys).toContain(`sales-model->${metricAsset!.id}`)
+    expect(relationKeys).toContain(`${metricAsset!.id}->sales-dataset`)
+    // No duplicate edges.
+    expect(new Set(relationKeys).size).toBe(relationKeys.length)
+    expect(
+      new Set(graph.assets.get('sales-model')?.upstreamIds),
+    ).toEqual(new Set(['bq-orders', 'bq-customers']))
   })
 
   it('builds independent processed-data contexts for every metric', () => {

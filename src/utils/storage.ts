@@ -6,6 +6,7 @@ import type {
   WorkbookData,
   WorkbookState,
 } from '../types'
+import { toImmediateTableList } from './metricImmediateTable'
 
 /**
  * Persistence layer
@@ -51,12 +52,18 @@ function sanitizeMetric(value: unknown): MetricRecord | null {
   const name = asString(raw.name).trim()
   const measureName = asString(raw.measureName).trim()
   if (!name || !measureName) return null
+  // Immediate Tables migrate from the legacy `Record<string, string>` shape to
+  // the new `Record<string, string[]>` shape; `toImmediateTableList` accepts
+  // both, so old saved projects keep working.
   const immediateTables =
     raw.immediateTables && typeof raw.immediateTables === 'object'
       ? Object.fromEntries(
           Object.entries(raw.immediateTables as Record<string, unknown>)
-            .map(([sheet, table]) => [sheet.trim(), asString(table).trim()])
-            .filter(([sheet, table]) => Boolean(sheet && table)),
+            .map(([sheet, tables]): [string, string[]] => [
+              sheet.trim(),
+              toImmediateTableList(tables),
+            ])
+            .filter(([sheet, tables]) => Boolean(sheet) && tables.length > 0),
         )
       : {}
   return {

@@ -8,31 +8,35 @@ import {
   GitBranch,
   Link2,
   Pencil,
+  Plus,
   Search,
   Sigma,
   Table2,
   Trash2,
   UploadCloud,
+  X,
 } from 'lucide-react'
 import { useState } from 'react'
 import type { MetricRecord, SheetData } from '../types'
 import {
   immediateTableExists,
   immediateTableOptions,
-  metricImmediateTable,
+  metricImmediateTables,
 } from '../utils/metricImmediateTable'
 
 interface MetricWorkspaceProps {
   metric: MetricRecord
   sheets: SheetData[]
   onToggleSheet: (sheet: string) => void
-  onSetImmediateTable: (sheet: string, table: string | null) => void
+  onSetImmediateTables: (sheet: string, tables: string[]) => void
   onDisconnectMissing: (sheet: string) => void
   onEdit: () => void
   onDelete: () => void
   onOpenLineage: () => void
   onGoToUpload: () => void
 }
+
+const normalizeKey = (value: string) => value.trim().toLowerCase()
 
 function ImmediateTableSelect({
   options,
@@ -151,11 +155,116 @@ function ImmediateTableSelect({
   )
 }
 
+/**
+ * Manage the (possibly multiple) Immediate Tables for one connected sheet.
+ * Each slot reuses the searchable dropdown; duplicates are prevented by hiding
+ * already-selected options, and selections can be added or removed freely.
+ */
+function ImmediateTablesEditor({
+  options,
+  selected,
+  sheetName,
+  onChange,
+}: {
+  options: string[]
+  selected: string[]
+  sheetName: string
+  onChange: (next: string[]) => void
+}) {
+  const [adding, setAdding] = useState(false)
+  const selectedKeys = new Set(selected.map(normalizeKey))
+
+  // Options minus everything already chosen, optionally keeping one slot's own value.
+  const optionsExcluding = (keep?: string) =>
+    options.filter(
+      (option) =>
+        option === keep || !selectedKeys.has(normalizeKey(option)),
+    )
+
+  const replaceAt = (index: number, value: string | null) => {
+    if (value === null) {
+      onChange(selected.filter((_, i) => i !== index))
+      return
+    }
+    const key = normalizeKey(value)
+    if (selected.some((other, i) => i !== index && normalizeKey(other) === key)) {
+      return // ignore a pick that duplicates another slot
+    }
+    onChange(selected.map((other, i) => (i === index ? value : other)))
+  }
+
+  const addValue = (value: string | null) => {
+    setAdding(false)
+    if (!value || selectedKeys.has(normalizeKey(value))) return
+    onChange([...selected, value])
+  }
+
+  const canAdd = optionsExcluding().length > 0
+
+  return (
+    <div className="immediate-tables-editor">
+      {selected.map((value, index) => (
+        <div className="immediate-table-row" key={`${value}-${index}`}>
+          <ImmediateTableSelect
+            onChange={(next) => replaceAt(index, next)}
+            options={optionsExcluding(value)}
+            selected={value}
+            sheetName={sheetName}
+          />
+          <button
+            aria-label={`Remove Immediate Table ${value}`}
+            className="immediate-table-remove"
+            onClick={() => replaceAt(index, null)}
+            type="button"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      ))}
+
+      {adding && (
+        <div className="immediate-table-row">
+          <ImmediateTableSelect
+            onChange={addValue}
+            options={optionsExcluding()}
+            selected={undefined}
+            sheetName={sheetName}
+          />
+          <button
+            aria-label="Cancel adding Immediate Table"
+            className="immediate-table-remove"
+            onClick={() => setAdding(false)}
+            type="button"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {!selected.length && !adding && (
+        <span className="immediate-table-empty-state">
+          No Immediate Table selected
+        </span>
+      )}
+
+      <button
+        className="immediate-table-add"
+        disabled={!canAdd}
+        onClick={() => setAdding(true)}
+        type="button"
+      >
+        <Plus size={13} />
+        Add Immediate Table
+      </button>
+    </div>
+  )
+}
+
 export function MetricWorkspace({
   metric,
   sheets,
   onToggleSheet,
-  onSetImmediateTable,
+  onSetImmediateTables,
   onDisconnectMissing,
   onEdit,
   onDelete,
@@ -369,15 +478,16 @@ export function MetricWorkspace({
               <span className="eyebrow">Metric routing</span>
               <h2>Immediate Tables</h2>
               <p className="section-sub">
-                Choose the impacted table that should feed directly into the
-                Power BI table for each connected sheet.
+                Choose the impacted tables that should feed directly into the
+                Power BI table for each connected sheet. Add more than one to
+                fan multiple tables into the same Power BI table.
               </p>
             </div>
           </div>
 
           <div className="immediate-table-grid">
             {connectedSheets.map((sheet) => {
-              const selected = metricImmediateTable(metric, sheet.name)
+              const selected = metricImmediateTables(metric, sheet.name)
               const options = immediateOptionsBySheet.get(sheet.name) ?? []
               return (
                 <div className="immediate-table-config" key={sheet.name}>
@@ -393,9 +503,9 @@ export function MetricWorkspace({
                       </small>
                     </div>
                   </div>
-                  <ImmediateTableSelect
-                    onChange={(table) =>
-                      onSetImmediateTable(sheet.name, table)
+                  <ImmediateTablesEditor
+                    onChange={(tables) =>
+                      onSetImmediateTables(sheet.name, tables)
                     }
                     options={options}
                     selected={selected}

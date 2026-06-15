@@ -107,8 +107,12 @@ export interface MetricRecord {
   description?: string
   /** Workbook sheet names; each sheet represents one Power BI table. */
   connectedSheets: string[]
-  /** Sheet name -> selected upstream table feeding the Power BI table. */
-  immediateTables: Record<string, string>
+  /**
+   * Sheet name -> selected upstream tables feeding the Power BI table.
+   * Each sheet can have multiple Immediate Tables. Legacy projects stored a
+   * single string per sheet; those are migrated to a one-element array on load.
+   */
+  immediateTables: Record<string, string[]>
 }
 
 export interface ViewRecord {
