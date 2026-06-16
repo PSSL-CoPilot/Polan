@@ -15,10 +15,11 @@ import { DataTable } from './components/DataTable'
 import { MetricModal, type MetricFormValues } from './components/MetricModal'
 import { MetricWorkspace } from './components/MetricWorkspace'
 import { Sidebar } from './components/Sidebar'
+import { SplashScreen } from './components/SplashScreen'
 import { Topbar } from './components/Topbar'
 import { UploadWorkspace } from './components/UploadWorkspace'
 import { allMetrics, findMetric, useProject } from './hooks/useProject'
-import { useWorkbooks } from './hooks/useWorkbooks'
+import { REFRESH_NEEDS_FILE, useWorkbooks } from './hooks/useWorkbooks'
 import type { AppView, Layer, MetricRecord, WorkbookData } from './types'
 import { buildLineage } from './utils/lineage'
 import { parseLineageRoute } from './utils/lineageLink'
@@ -69,7 +70,12 @@ function App() {
   const [lineageMetricFilter, setLineageMetricFilter] = useState<string | null>(
     lineageRoute?.metricId ?? null,
   )
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  // Skip the splash for the embedded lineage-only route so deep links open
+  // straight into the graph.
+  const [showSplash, setShowSplash] = useState(() => !lineageRoute)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const refreshInputRef = useRef<HTMLInputElement>(null)
   const pendingSheetSelectionRef = useRef<{
     workbookId: string
     sheetName: string
@@ -87,6 +93,15 @@ function App() {
     }
     window.addEventListener('hashchange', handleHashChange)
     return () => window.removeEventListener('hashchange', handleHashChange)
+  }, [])
+
+  // Brief startup splash. Rendered as an overlay, so the app and its persisted
+  // state keep loading underneath while it shows.
+  useEffect(() => {
+    if (!showSplash) return
+    const timer = window.setTimeout(() => setShowSplash(false), 2500)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const {
@@ -116,6 +131,7 @@ function App() {
     deleteWorkbook,
     selectWorkbook,
     replaceWorkbooks,
+    refreshWorkbook,
   } = useWorkbooks()
 
   // Present the active workbook through the existing WorkbookData shape so the
@@ -255,6 +271,42 @@ function App() {
       setError(errorText || 'No valid workbooks were found in your selection.')
     }
     if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  // Re-parse the active workbook. Prefer the in-memory File; if the cache was
+  // cleared (e.g. after a reload), fall back to a file picker so the user can
+  // reselect the same workbook.
+  const refreshActiveWorkbook = async (file?: File) => {
+    if (!activeWorkbookId) return
+    setIsRefreshing(true)
+    try {
+      await refreshWorkbook(activeWorkbookId, file)
+      flashNotice('Workbook data refreshed.')
+    } catch (caught) {
+      if (caught instanceof Error && caught.message === REFRESH_NEEDS_FILE) {
+        // No cached File — ask the user to reselect it.
+        setIsRefreshing(false)
+        refreshInputRef.current?.click()
+        return
+      }
+      flashNotice(
+        caught instanceof Error
+          ? `Refresh failed: ${caught.message}`
+          : 'The workbook could not be refreshed.',
+        'error',
+      )
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
+
+  const handleRefreshFile = async (file: File) => {
+    if (!activeWorkbookId) return
+    if (!/\.xlsx?$/i.test(file.name)) {
+      flashNotice('Choose an .xlsx or .xls workbook to refresh.', 'error')
+      return
+    }
+    await refreshActiveWorkbook(file)
   }
 
   const handleSaveProject = () => {
@@ -560,6 +612,7 @@ function App() {
 
   return (
     <div className="app-shell">
+      <SplashScreen show={showSplash} />
       <Sidebar
         activeMetricId={project.selectedMetricId}
         activeView={activeView}
@@ -586,7 +639,9 @@ function App() {
       />
       <div className="main-column">
         <Topbar
+          isRefreshing={isRefreshing}
           onOpenProject={handleOpenProject}
+          onRefreshWorkbook={() => refreshActiveWorkbook()}
           onSaveProject={handleSaveProject}
           onUploadClick={() => fileInputRef.current?.click()}
           workbook={workbook}
@@ -600,6 +655,17 @@ function App() {
             if (files.length) handleFiles(files)
           }}
           ref={fileInputRef}
+          type="file"
+        />
+        <input
+          accept=".xlsx,.xls"
+          className="hidden-input"
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            if (file) handleRefreshFile(file)
+            event.target.value = ''
+          }}
+          ref={refreshInputRef}
           type="file"
         />
         <main>

@@ -1,5 +1,12 @@
-import { FileSpreadsheet, FolderOpen, Plus, Save } from 'lucide-react'
-import { useRef } from 'react'
+import {
+  FileSpreadsheet,
+  FolderOpen,
+  Plus,
+  RefreshCw,
+  Save,
+} from 'lucide-react'
+import { memo, useRef, useState } from 'react'
+import logoUrl from '../assets/polestarlogo.png'
 import type { WorkbookData } from '../types'
 
 interface TopbarProps {
@@ -7,24 +14,35 @@ interface TopbarProps {
   onUploadClick: () => void
   onSaveProject: () => void
   onOpenProject: (file: File) => void
+  onRefreshWorkbook: () => void
+  isRefreshing: boolean
 }
 
-export function Topbar({
+export const Topbar = memo(function Topbar({
   workbook,
   onUploadClick,
   onSaveProject,
   onOpenProject,
+  onRefreshWorkbook,
+  isRefreshing,
 }: TopbarProps) {
   const projectInputRef = useRef<HTMLInputElement>(null)
+  // Hide the logo gracefully if the asset ever fails to resolve.
+  const [logoOk, setLogoOk] = useState(true)
 
   return (
     <header className="topbar">
       <div className="topbar-brand">
-        <img
-          alt="Polestar Analytics"
-          className="topbar-logo"
-          src="/polestarlogo.png"
-        />
+        {logoOk ? (
+          <img
+            alt="Polestar Analytics"
+            className="topbar-logo"
+            onError={() => setLogoOk(false)}
+            src={logoUrl}
+          />
+        ) : (
+          <span className="topbar-brand-fallback">Polestar Analytics</span>
+        )}
       </div>
       <div className="topbar-actions">
         <div
@@ -33,6 +51,18 @@ export function Topbar({
         >
           <FileSpreadsheet size={17} />
           <span>{workbook?.name ?? 'No workbook loaded'}</span>
+          {workbook && (
+            <button
+              aria-label="Refresh workbook data"
+              className={`file-refresh ${isRefreshing ? 'is-busy' : ''}`}
+              disabled={isRefreshing}
+              onClick={onRefreshWorkbook}
+              title="Re-parse the active workbook"
+              type="button"
+            >
+              <RefreshCw size={14} />
+            </button>
+          )}
         </div>
         <input
           accept=".json,.polan.json,application/json"
@@ -74,4 +104,4 @@ export function Topbar({
       </div>
     </header>
   )
-}
+})

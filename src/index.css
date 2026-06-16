@@ -734,6 +734,116 @@ select:focus-visible {
   color: #2e9b64;
 }
 
+/* ── Startup splash screen ──────────────────────────────────────────────── */
+.splash-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+}
+
+.splash-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  padding: 24px;
+}
+
+.splash-logo {
+  height: 46px;
+  width: auto;
+  object-fit: contain;
+}
+
+.splash-title {
+  margin: 0;
+  color: #221f2b;
+  font: 750 30px/1.1 'Manrope', sans-serif;
+  letter-spacing: -0.4px;
+}
+
+.splash-bar {
+  position: relative;
+  width: 220px;
+  height: 5px;
+  overflow: hidden;
+  background: #ece9f3;
+  border-radius: 999px;
+}
+
+.splash-bar-fill {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  background: linear-gradient(90deg, #6557dc, #c2417f);
+  border-radius: 999px;
+  transform-origin: left center;
+  animation: splash-fill 2.4s ease-in-out forwards;
+}
+
+@keyframes splash-fill {
+  0% {
+    transform: scaleX(0);
+  }
+  60% {
+    transform: scaleX(0.75);
+  }
+  100% {
+    transform: scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-bar-fill {
+    animation-duration: 0.01s;
+  }
+}
+
+.topbar-brand-fallback {
+  color: #2b2733;
+  font: 700 13px 'Manrope', sans-serif;
+  letter-spacing: 0.2px;
+}
+
+/* Refresh control beside the active workbook name. */
+.file-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-left: 2px;
+  color: #7a7784;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  transition: color 140ms ease, background 140ms ease, border-color 140ms ease;
+}
+
+.file-refresh:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: #ddd8ff;
+}
+
+.file-refresh:disabled {
+  cursor: progress;
+}
+
+.file-refresh.is-busy svg {
+  animation: file-refresh-spin 0.8s linear infinite;
+}
+
+@keyframes file-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .icon-button {
   position: relative;
   width: 34px;
