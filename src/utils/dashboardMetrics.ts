@@ -21,6 +21,8 @@ export interface DashboardMetrics {
   noLayer: number
   mdrYes: number
   mdrNo: number
+  tableCount: number
+  viewCount: number
 }
 
 const normalized = (value: unknown) =>
@@ -106,6 +108,8 @@ export function computeDashboardMetrics(
     noLayer: 0,
     mdrYes: 0,
     mdrNo: 0,
+    tableCount: 0,
+    viewCount: 0,
   }
   const sourceAssets = new Set<string>()
 
@@ -118,6 +122,12 @@ export function computeDashboardMetrics(
       if (kind === 'report') metrics.reports += 1
       if (kind === 'dataset') metrics.datasets += 1
     }
+
+    // Table vs View comparison — driven by the Impacted Asset Type column,
+    // case-insensitive and null-safe (blank / other values count as neither).
+    const assetType = normalized(row.impactedAssetType)
+    if (assetType === 'table') metrics.tableCount += 1
+    else if (assetType === 'view') metrics.viewCount += 1
 
     const sourceAsset = normalized(row.sourceAsset)
     if (sourceAsset) sourceAssets.add(sourceAsset)

@@ -4,6 +4,7 @@ import {
   FileBarChart2,
   Layers3,
   ShieldCheck,
+  Table2,
   TrendingDown,
   TrendingUp,
   Zap,
@@ -252,8 +253,16 @@ export function DashboardPage({ workbooks }: DashboardPageProps) {
     ],
     [stats],
   )
+  const tableViewItems = useMemo(
+    () => [
+      { label: 'Table', value: stats.tableCount, color: '#6557dc' },
+      { label: 'View', value: stats.viewCount, color: '#d99a24' },
+    ],
+    [stats],
+  )
   const layerIcon = useMemo(() => <Layers3 size={19} />, [])
   const mdrIcon = useMemo(() => <ShieldCheck size={19} />, [])
+  const tableViewIcon = useMemo(() => <Table2 size={19} />, [])
 
   const handleWorkbookChange = (workbookId: string) => {
     setSelectedWorkbookId(workbookId)
@@ -344,6 +353,13 @@ export function DashboardPage({ workbooks }: DashboardPageProps) {
             icon={mdrIcon}
             items={mdrItems}
             title="MDR Coverage"
+          />
+          <DonutChart
+            centerLabel="assets"
+            description="Impacted assets split by table and view type."
+            icon={tableViewIcon}
+            items={tableViewItems}
+            title="Table vs View"
           />
         </div>
       </div>

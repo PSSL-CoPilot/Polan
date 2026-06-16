@@ -702,12 +702,15 @@
 .immediate-table-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  align-items: start;
   gap: 12px;
   margin-top: 17px;
 }
 
 .immediate-table-config {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
   padding: 14px;
   background: #fbfafd;
   border: 1px solid #e8e5ee;
@@ -1625,14 +1628,6 @@
   .dashboard-kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
-  .dashboard-donut-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .dashboard-donut-content {
-    grid-template-columns: minmax(220px, 0.75fr) minmax(240px, 1.25fr);
-  }
 }
 
 .processed-view {
@@ -1730,16 +1725,16 @@
   max-width: none;
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 7px;
   overflow: hidden;
-  padding: 16px 20px 18px;
+  padding: 11px 18px 14px;
 }
 
 .lineage-view .workspace-heading {
-  min-height: 78px;
+  min-height: 0;
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
+  gap: 5px;
   flex: 0 0 auto;
 }
 
@@ -2071,8 +2066,8 @@
 }
 
 .dashboard-donut-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 13px;
   min-height: 0;
 }
 
@@ -2080,18 +2075,18 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 13px 15px;
-  border-radius: 12px;
+  padding: 15px 16px;
+  border-radius: 13px;
   box-shadow: 0 7px 20px rgba(39, 35, 55, 0.045);
 }
 
 .dashboard-donut-icon {
-  width: 31px;
-  height: 31px;
+  width: 33px;
+  height: 33px;
 }
 
 .dashboard-donut-header h2 {
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .dashboard-donut-header p {
@@ -2101,33 +2096,52 @@
 }
 
 .dashboard-donut-content {
-  grid-template-columns: minmax(125px, 0.85fr) minmax(130px, 1.15fr);
-  gap: 10px;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  align-items: center;
+  gap: 12px;
   min-height: 0;
   flex: 1;
-  margin-top: 7px;
+  margin-top: 9px;
 }
 
 .dashboard-donut-svg {
-  width: min(100%, 185px);
+  width: 100%;
+  max-width: 210px;
   max-height: 100%;
+  margin-inline: auto;
+}
+
+.dashboard-donut-total {
+  font-size: 30px;
 }
 
 .dashboard-donut-legend-row {
-  gap: 7px;
-  min-height: 31px;
+  gap: 8px;
+  min-height: 34px;
 }
 
-@media (max-width: 1180px) {
+@media (max-width: 1240px) {
   .dashboard-kpi-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  /* Keep all three donuts on a single row; they scale down rather than wrap. */
   .dashboard-donut-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
   }
 
   .dashboard-donut-content {
-    grid-template-columns: minmax(115px, 0.85fr) minmax(120px, 1.15fr);
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: 8px;
+  }
+
+  .dashboard-donut-svg {
+    max-width: 150px;
+  }
+
+  .dashboard-donut-legend {
+    width: 100%;
   }
 }

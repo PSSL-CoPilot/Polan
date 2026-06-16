@@ -391,25 +391,33 @@ function insertMetricNodes(
   // For an upstream edge `source → table`, decide how the Immediate Tables
   // reshape it. Each Immediate Table feeds the Power BI table directly (those
   // edges are emitted in the final block); sibling upstream sources are
-  // rerouted to flow *through* the first Immediate Table instead. A source that
+  // rerouted to flow *through* the Immediate Tables instead. A sibling fans
+  // into *every* Immediate Table of its route, so each selected Immediate Table
+  // keeps its own upstream sources rather than only the first one. A source that
   // also belongs to a route without any Immediate Table keeps its direct edge.
   const immediateReroute = (
     routes: MetricTableRoute[],
     source: string,
-  ): { isImmediate: boolean; reroute?: string } => {
+  ): { isImmediate: boolean; reroutes: string[] } => {
     let isImmediate = false
-    let reroute: string | undefined
     let staysDirect = false
+    const reroutes = new Set<string>()
     routes.forEach((route) => {
       if (route.immediateIds.includes(source)) {
         isImmediate = true
         return
       }
       if (!route.upstreamIds.has(source)) return
-      if (route.immediateIds.length) reroute ??= route.immediateIds[0]
-      else staysDirect = true
+      if (route.immediateIds.length) {
+        route.immediateIds.forEach((id) => reroutes.add(id))
+      } else {
+        staysDirect = true
+      }
     })
-    return { isImmediate, reroute: staysDirect ? undefined : reroute }
+    return {
+      isImmediate,
+      reroutes: staysDirect ? [] : Array.from(reroutes),
+    }
   }
 
   relations.forEach((relation) => {
@@ -440,11 +448,13 @@ function insertMetricNodes(
       push(relation)
       return
     }
-    const { isImmediate, reroute } = immediateReroute(routes, relation.source)
+    const { isImmediate, reroutes } = immediateReroute(routes, relation.source)
     // Immediate Tables feed the Power BI table via the final block.
     if (isImmediate) return
-    if (reroute) {
-      push({ source: relation.source, target: reroute, direction: 'upstream' })
+    if (reroutes.length) {
+      reroutes.forEach((target) =>
+        push({ source: relation.source, target, direction: 'upstream' }),
+      )
     } else {
       push(relation)
     }

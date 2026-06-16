@@ -1,10 +1,4 @@
-import {
-  FileSpreadsheet,
-  FolderOpen,
-  Plus,
-  Save,
-  Search,
-} from 'lucide-react'
+import { FileSpreadsheet, FolderOpen, Plus, Save } from 'lucide-react'
 import { useRef } from 'react'
 import type { WorkbookData } from '../types'
 
@@ -25,14 +19,12 @@ export function Topbar({
 
   return (
     <header className="topbar">
-      <div className="global-search">
-        <Search size={17} />
-        <input
-          aria-label="Search assets"
-          disabled={!workbook}
-          placeholder="Search assets, datasets, reports..."
+      <div className="topbar-brand">
+        <img
+          alt="Polestar Analytics"
+          className="topbar-logo"
+          src="/polestarlogo.png"
         />
-        <kbd>⌘ K</kbd>
       </div>
       <div className="topbar-actions">
         <div

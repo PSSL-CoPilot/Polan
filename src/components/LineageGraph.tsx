@@ -72,6 +72,7 @@ function AssetNodeCard({ data }: NodeProps<AssetNode>) {
   const { asset, isDimmed, isSelected, isFocus } = data
   const config = assetConfig[asset.type]
   const Icon = config.icon
+  const connectionCount = asset.upstreamIds.length + asset.downstreamIds.length
 
   return (
     <div
@@ -94,6 +95,36 @@ function AssetNodeCard({ data }: NodeProps<AssetNode>) {
         <ChevronRight className="node-chevron" size={16} />
       )}
       <Handle type="source" position={Position.Right} />
+
+      <div className="node-tooltip" role="tooltip">
+        <span className="node-tooltip-type">{config.label}</span>
+        <strong className="node-tooltip-name">{asset.name}</strong>
+        <div className="node-tooltip-meta">
+          {asset.type === 'metric' ? (
+            asset.metric?.measureName && (
+              <span>
+                <em>Measure</em>
+                {asset.metric.measureName}
+              </span>
+            )
+          ) : (
+            <>
+              <span>
+                <em>Layer</em>
+                {asset.layer}
+              </span>
+              <span>
+                <em>MDR</em>
+                {asset.mdrAvailability ? 'Available' : 'Not available'}
+              </span>
+            </>
+          )}
+          <span>
+            <em>Connections</em>
+            {connectionCount}
+          </span>
+        </div>
+      </div>
     </div>
   )
 }

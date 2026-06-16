@@ -108,7 +108,25 @@ describe('dashboard calculations', () => {
       noLayer: 1,
       mdrYes: 2,
       mdrNo: 3,
+      tableCount: 0,
+      viewCount: 0,
     })
+  })
+
+  it('counts Table vs View case-insensitively and null-safely', () => {
+    const rows = [
+      row({ sheet: 'Sales', impactedAssetType: 'table' }),
+      row({ sheet: 'Sales', impactedAssetType: ' TABLE ' }),
+      row({ sheet: 'Sales', impactedAssetType: 'View' }),
+      row({ sheet: 'Sales', impactedAssetType: 'VIEW' }),
+      row({ sheet: 'Sales', impactedAssetType: undefined }),
+      row({ sheet: 'Sales', impactedAssetType: '' }),
+      row({ sheet: 'Sales', impactedAssetType: 'dataset' }),
+    ]
+
+    const stats = computeDashboardMetrics(rows)
+    expect(stats.tableCount).toBe(2)
+    expect(stats.viewCount).toBe(2)
   })
 
   it('scopes rows by workbook and sheet across the full collection', () => {
@@ -164,6 +182,8 @@ describe('dashboard calculations', () => {
       noLayer: 0,
       mdrYes: 0,
       mdrNo: 0,
+      tableCount: 0,
+      viewCount: 0,
     })
     expect(
       getDashboardRows([], {

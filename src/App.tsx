@@ -475,7 +475,6 @@ function App() {
               </div>
             </div>
           </div>
-          {warningBanner}
           <Suspense
             fallback={
               <div className="graph-loading">

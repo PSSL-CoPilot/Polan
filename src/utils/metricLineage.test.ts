@@ -276,9 +276,10 @@ describe('metric lineage insertion', () => {
     // Both Immediate Tables connect directly into the same Power BI table.
     expect(relationKeys).toContain('bq-orders->sales-model')
     expect(relationKeys).toContain('bq-customers->sales-model')
-    // The sibling upstream is routed through the first Immediate Table, not
-    // directly into the Power BI table.
+    // The sibling upstream fans into *every* selected Immediate Table, not only
+    // the first one, and never straight into the Power BI table.
     expect(relationKeys).toContain('bq-returns->bq-orders')
+    expect(relationKeys).toContain('bq-returns->bq-customers')
     expect(relationKeys).not.toContain('bq-returns->sales-model')
     // Metric stays connected to the Power BI table and the dataset.
     expect(relationKeys).toContain(`sales-model->${metricAsset!.id}`)
