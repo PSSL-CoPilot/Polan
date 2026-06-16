@@ -173,6 +173,18 @@ function App() {
     }
   }, [activeWorkbookId, lineageRoute, selectWorkbook, workbooks])
 
+  // On initial load, land on the dashboard when a workbook is already present
+  // (e.g. restored from a previous session); otherwise stay on the upload page.
+  // One-shot so it never overrides later manual navigation.
+  const initialRouteRef = useRef(false)
+  useEffect(() => {
+    if (initialRouteRef.current || lineageRoute) return
+    if (activeWorkbookId) {
+      initialRouteRef.current = true
+      setActiveView((view) => (view === 'upload' ? 'preview' : view))
+    }
+  }, [activeWorkbookId, lineageRoute])
+
   const handleSelectWorkbookSheet = (
     workbookId: string,
     sheetName: string,

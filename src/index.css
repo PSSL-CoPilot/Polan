@@ -1003,9 +1003,17 @@ main,
 }
 
 .upload-page {
+  height: calc(100vh - 68px);
   max-width: 1180px;
   margin: 0 auto;
-  padding-top: 44px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 26px 32px 20px;
+}
+
+.upload-page .upload-heading {
+  flex: 0 0 auto;
 }
 
 .upload-heading h1 {
@@ -1049,12 +1057,14 @@ main,
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(330px, 0.65fr);
   gap: 18px;
-  margin-top: 30px;
+  margin-top: 22px;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .dropzone,
 .intake-summary {
-  min-height: 430px;
+  min-height: 0;
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -1151,6 +1161,9 @@ main,
 }
 
 .intake-summary {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   padding: 25px;
 }
 
@@ -1252,15 +1265,19 @@ main,
 }
 
 .sheet-checks {
-  min-height: 115px;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
   display: grid;
   align-content: start;
   gap: 9px;
-  margin-bottom: 17px;
+  margin-bottom: 15px;
+  padding-right: 4px;
 }
 
 .schema-guide {
-  min-height: 378px;
+  min-height: 0;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -1363,12 +1380,13 @@ main,
 }
 
 .process-strip {
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: 1fr auto 1fr auto 1fr;
   align-items: center;
   gap: 24px;
-  margin-top: 18px;
-  padding: 20px 28px;
+  margin-top: 16px;
+  padding: 15px 28px;
   background: #201f27;
   border-radius: 12px;
   color: #fff;
