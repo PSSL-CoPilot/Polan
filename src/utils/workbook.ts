@@ -93,6 +93,28 @@ function isEmptyRow(row: OriginalRow) {
   return Object.values(row).every((value) => displayValue(value) === '')
 }
 
+/**
+ * Locate the header row within a raw sheet matrix. A header is the first row
+ * that contains every required column name. This makes parsing robust to blank
+ * or title rows that precede the header (a common shape in hand-edited
+ * workbooks and newly added sheets) instead of blindly assuming row 1.
+ *
+ * Returns the matrix index of the header, or 0 when no qualifying row is found
+ * (so genuinely malformed sheets still surface the "missing columns" error).
+ */
+function findHeaderRowOffset(matrix: CellValue[][]): number {
+  const limit = Math.min(matrix.length, 50)
+  for (let index = 0; index < limit; index += 1) {
+    const candidate = (matrix[index] ?? [])
+      .map((value) => displayValue(value))
+      .filter(Boolean)
+    if (!candidate.length) continue
+    const mapping = resolveColumns(candidate)
+    if (REQUIRED_COLUMNS.every((column) => mapping[column])) return index
+  }
+  return 0
+}
+
 export function processSheet(
   name: string,
   inputRows: OriginalRow[],
@@ -188,12 +210,15 @@ function extractWorksheetHyperlinks(
   XLSX: typeof import('xlsx'),
   worksheet: WorkSheet,
   headerRow: CellValue[],
+  headerRowAbs: number,
 ): Map<number, RowHyperlinks> {
   const linksByRow = new Map<number, RowHyperlinks>()
   if (!worksheet['!ref']) return linksByRow
 
   const range = XLSX.utils.decode_range(worksheet['!ref'])
-  for (let row = range.s.r + 1; row <= range.e.r; row += 1) {
+  // Start one row below the *detected* header, so links line up with data rows
+  // even when blank/title rows precede the header.
+  for (let row = headerRowAbs + 1; row <= range.e.r; row += 1) {
     for (let column = range.s.c; column <= range.e.c; column += 1) {
       const header = displayValue(headerRow[column - range.s.c])
       if (!header) continue
@@ -239,18 +264,34 @@ export async function parseWorkbookFile(file: File): Promise<WorkbookData> {
       header: 1,
       defval: null,
       raw: false,
+      blankrows: true,
     })
-    const originalColumns = (matrix[0] ?? [])
+
+    // Detect the header row so sheets whose data does not start on row 1 (blank
+    // or title rows first) parse exactly like any other sheet.
+    const headerOffset = findHeaderRowOffset(matrix)
+    const headerRow = matrix[headerOffset] ?? []
+    const originalColumns = headerRow
       .map((value) => displayValue(value))
       .filter(Boolean)
+
+    // Translate the matrix offset into an absolute worksheet row so both the
+    // row reader and hyperlink extractor anchor on the real header position.
+    const rangeStartRow = worksheet['!ref']
+      ? XLSX.utils.decode_range(worksheet['!ref']).s.r
+      : 0
+    const headerRowAbs = rangeStartRow + headerOffset
+
     const rows = XLSX.utils.sheet_to_json<OriginalRow>(worksheet, {
       defval: null,
       raw: false,
+      range: headerRowAbs,
     })
     const hyperlinksByRow = extractWorksheetHyperlinks(
       XLSX,
       worksheet,
-      matrix[0] ?? [],
+      headerRow,
+      headerRowAbs,
     )
     return processSheet(sheetName, rows, originalColumns, hyperlinksByRow)
   })

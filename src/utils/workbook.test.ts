@@ -104,6 +104,56 @@ describe('workbook enrichment', () => {
     })
   })
 
+  it('parses sheets whose header is preceded by blank/title rows', async () => {
+    // A newly added sheet whose data does not start on row 1: a title row, a
+    // blank row, then the real header and one data row.
+    const aoa = [
+      ['Quarterly lineage export'],
+      [],
+      ['Source Asset', 'Impacted Asset', 'Direction', 'Qualified Name'],
+      [
+        'Customer Table',
+        'bq_customer',
+        'upstream',
+        'a/b/c/project_alpha/customer_USL/customer',
+      ],
+    ]
+    const worksheet = XLSX.utils.aoa_to_sheet(aoa)
+    // Native hyperlink on the data row's Source Asset cell (A4).
+    worksheet.A4 = {
+      ...(worksheet.A4 as XLSX.CellObject),
+      l: { Target: 'https://example.atlan.com/assets/customer' },
+    }
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Offset Header')
+    const bytes = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+    const file = new File([bytes], 'offset-header.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+
+    const parsed = await parseWorkbookFile(file)
+    const sheet = parsed.sheets[0]
+
+    expect(sheet.errors).toEqual([])
+    expect(sheet.originalColumns).toEqual([
+      'Source Asset',
+      'Impacted Asset',
+      'Direction',
+      'Qualified Name',
+    ])
+    expect(sheet.rows).toHaveLength(1)
+    expect(sheet.rows[0]).toMatchObject({
+      sourceAsset: 'Customer Table',
+      impactedAsset: 'bq_customer',
+      direction: 'upstream',
+      layer: 'Gold',
+    })
+    // The hyperlink must still line up with the correct (offset) data row.
+    expect(sheet.rows[0].hyperlinks?.['Source Asset']?.target).toBe(
+      'https://example.atlan.com/assets/customer',
+    )
+  })
+
   it('captures =HYPERLINK() formula links while keeping the visible text', async () => {
     const worksheet = XLSX.utils.json_to_sheet([row])
     // Real BI/Atlan exports store links as HYPERLINK formulas, not cell.l.
