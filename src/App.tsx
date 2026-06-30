@@ -412,16 +412,22 @@ function App() {
 
   const renderWorkspace = () => {
     // ── Glossary ─────────────────────────────────────────────────────────────
-    // Governance glossary is mock-data driven, so it renders even without a
-    // workbook loaded (checked before the upload fallback below).
+    // Derived live from processed rows, the lineage graph, and Project Explorer
+    // views. Rendered before the upload fallback so it can show its own empty
+    // state when no workbook has been processed yet.
     if (activeView === 'glossary') {
       return (
         <GlossaryPage
-          onViewMeasureLineage={() => {
-            // Navigate to the existing lineage tab. Deep-linking a specific
-            // measure is a TODO until glossary measures map to workbook metrics.
+          assets={graph.assets}
+          onViewLineage={(metricId) => {
+            // Focus the metric in the existing Lineage tab using the same
+            // metric-filter mechanism the lineage view already consumes.
+            setLineageMetricFilter(metricId)
+            selectMetric(metricId)
             setActiveView('lineage')
           }}
+          rows={allRows}
+          views={project.views}
         />
       )
     }

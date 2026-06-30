@@ -31,6 +31,10 @@
   margin-top: 16px;
 }
 
+.glossary-summary-5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .glossary-stat {
   display: flex;
   align-items: center;
@@ -206,8 +210,94 @@
   padding: 8px;
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 10px;
   background: #fbfafd;
+}
+
+/* Metric groups (mirror Project Explorer views) */
+.glossary-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.glossary-group-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 4px;
+  color: #6a6676;
+}
+
+.glossary-group-head svg {
+  color: var(--accent);
+}
+
+.glossary-group-head span {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.glossary-group-head small {
+  padding: 1px 7px;
+  color: #4a4660;
+  background: var(--accent-soft);
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.glossary-group-empty {
+  padding: 14px;
+  color: #8c8994;
+  font-size: 11px;
+  font-style: italic;
+  text-align: center;
+}
+
+/* Compact count chips inside a metric detail */
+.kpi-count-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(74px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.kpi-count {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 11px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.kpi-count strong {
+  color: var(--ink);
+  font: 750 16px 'Manrope', sans-serif;
+}
+
+.kpi-count span {
+  color: #8c8994;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.kpi-linked {
+  margin-top: 14px;
+}
+
+.glossary-linked-wrap {
+  max-height: 240px;
+  margin-top: 6px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
 }
 
 .glossary-kpi {
@@ -394,6 +484,12 @@
   border: 1px solid #f1cdc8;
 }
 
+.cert-unknown {
+  color: #6c6976;
+  background: #f4f3f7;
+  border: 1px solid #e2dfe9;
+}
+
 .src-ai {
   color: #5d50c4;
   background: var(--accent-soft);
@@ -522,6 +618,11 @@
   max-width: 360px;
   font-size: 11px;
   line-height: 1.5;
+}
+
+.glossary-empty-page {
+  margin-top: 20px;
+  padding: 70px 24px;
 }
 
 /* Linked Assets drawer */
