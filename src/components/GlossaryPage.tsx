@@ -1,11 +1,11 @@
 import {
   BadgeCheck,
-  ChevronDown,
+  ChevronRight,
   Database,
   FileBarChart2,
   FolderTree,
   GitBranch,
-  Layers3,
+  Info,
   Link2,
   Search,
   ShieldCheck,
@@ -13,7 +13,12 @@ import {
   Table2,
   X,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import {
+  useMemo,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react'
 import '../glossary.css'
 import type { AssetRecord, ProcessedRow, ViewRecord } from '../types'
 import {
@@ -94,7 +99,7 @@ function MetricDetail({
         </div>
         <div className="kpi-field">
           <span className="kpi-field-label">Associated measure</span>
-          <strong>{na(metric.measureName)}</strong>
+          <strong className="kpi-field-mono">{na(metric.measureName)}</strong>
         </div>
         <div className="kpi-field">
           <span className="kpi-field-label">Measure type</span>
@@ -129,7 +134,7 @@ function MetricDetail({
       {metric.linkedAssets.length > 0 && (
         <div className="kpi-linked">
           <span className="kpi-field-label">Linked assets</span>
-          <div className="glossary-drawer-table-wrap glossary-linked-wrap">
+          <div className="glossary-linked-wrap">
             <table className="glossary-asset-table">
               <thead>
                 <tr>
@@ -143,7 +148,7 @@ function MetricDetail({
               <tbody>
                 {metric.linkedAssets.map((asset, index) => (
                   <tr key={`${asset.name}-${asset.relationship}-${index}`}>
-                    <td>{asset.name}</td>
+                    <td className="asset-name-cell">{asset.name}</td>
                     <td>{asset.type}</td>
                     <td>{asset.relationship}</td>
                     <td>{asset.owner ?? 'Not available'}</td>
@@ -187,116 +192,140 @@ function MetricDetail({
   )
 }
 
-function DashboardCard({
-  dashboard,
-  expanded,
-  forceOpen,
-  query,
+function MetricRow({
+  metric,
+  open,
   onToggle,
   onViewLineage,
 }: {
-  dashboard: GlossaryDashboard
-  expanded: boolean
-  forceOpen: boolean
-  query: string
+  metric: GlossaryMetric
+  open: boolean
   onToggle: () => void
+  onViewLineage: () => void
+}) {
+  return (
+    <div className={`glossary-kpi ${open ? 'is-open' : ''}`}>
+      <button
+        aria-expanded={open}
+        className="glossary-kpi-head"
+        onClick={onToggle}
+        type="button"
+      >
+        <ChevronRight className="glossary-chevron" size={14} />
+        <Sigma size={14} className="glossary-kpi-icon" />
+        <span className="glossary-kpi-name">{metric.name}</span>
+        <span className="glossary-kpi-measure">{metric.measureName || '—'}</span>
+        <CertBadge status={metric.certification} />
+      </button>
+      {open && (
+        <MetricDetail metric={metric} onViewLineage={onViewLineage} />
+      )}
+    </div>
+  )
+}
+
+function DashboardCard({
+  dashboard,
+  open,
+  query,
+  openMetrics,
+  onToggle,
+  onToggleMetric,
+  onViewLineage,
+}: {
+  dashboard: GlossaryDashboard
+  open: boolean
+  query: string
+  openMetrics: Set<string>
+  onToggle: () => void
+  onToggleMetric: (metricId: string) => void
   onViewLineage: (metricId: string) => void
 }) {
-  const [openMetricId, setOpenMetricId] = useState<string | null>(null)
-  const certEntries = (Object.entries(dashboard.certification) as Array<
-    [CertStatus, number]
-  >).filter(([, count]) => count > 0)
+  const certEntries = (
+    Object.entries(dashboard.certification) as Array<[CertStatus, number]>
+  ).filter(([, count]) => count > 0)
+
+  const metricIsOpen = (metric: GlossaryMetric) =>
+    query ? metric.search.includes(query) : openMetrics.has(metric.id)
 
   return (
-    <section className={`glossary-dash ${expanded ? 'is-open' : ''}`}>
+    <section className={`glossary-dash ${open ? 'is-open' : ''}`}>
       <button
-        aria-expanded={expanded}
+        aria-expanded={open}
         className="glossary-dash-head"
         onClick={onToggle}
         type="button"
       >
-        <ChevronDown
-          className={`glossary-dash-chevron ${expanded ? '' : 'collapsed'}`}
-          size={16}
-        />
+        <ChevronRight className="glossary-chevron" size={16} />
+        <span className="glossary-dash-icon">
+          <FileBarChart2 size={15} />
+        </span>
         <div className="glossary-dash-title">
           <strong>{dashboard.name}</strong>
-          <small>{dashboard.owner ? `Owner · ${dashboard.owner}` : 'Report / Dashboard'}</small>
+          <small>
+            {dashboard.owner ? `Owner · ${dashboard.owner}` : 'Report / Dashboard'}
+          </small>
         </div>
         <div className="glossary-dash-meta">
-          <span>{dashboard.metricCount} metric{dashboard.metricCount === 1 ? '' : 's'}</span>
+          <span className="glossary-chip">
+            {dashboard.metricCount} metric{dashboard.metricCount === 1 ? '' : 's'}
+          </span>
           {dashboard.groupCount > 0 && (
-            <span>{dashboard.groupCount} group{dashboard.groupCount === 1 ? '' : 's'}</span>
+            <span className="glossary-chip">
+              {dashboard.groupCount} group{dashboard.groupCount === 1 ? '' : 's'}
+            </span>
           )}
-          <span>{dashboard.tableCount} table{dashboard.tableCount === 1 ? '' : 's'}</span>
-          <span>{dashboard.measureCount} measure{dashboard.measureCount === 1 ? '' : 's'}</span>
-          {certEntries.length > 0 ? (
-            certEntries.map(([status, count]) => (
-              <span className={`glossary-badge cert-${CERT_CLASS[status]}`} key={status}>
-                {status}: {count}
-              </span>
-            ))
-          ) : (
-            <span className="glossary-badge cert-unknown">No metrics</span>
-          )}
+          <span className="glossary-chip">
+            {dashboard.tableCount} table{dashboard.tableCount === 1 ? '' : 's'}
+          </span>
+          <span className="glossary-chip">
+            {dashboard.measureCount} measure
+            {dashboard.measureCount === 1 ? '' : 's'}
+          </span>
+          {certEntries.map(([status, count]) => (
+            <span
+              className={`glossary-badge cert-${CERT_CLASS[status]}`}
+              key={status}
+            >
+              {status}: {count}
+            </span>
+          ))}
         </div>
       </button>
 
-      {expanded && (
-        <div className="glossary-dash-body">
-          {dashboard.groups.length === 0 ? (
-            <div className="glossary-group-empty">
-              No metrics from Project Explorer are linked to this dashboard yet.
-            </div>
-          ) : (
-            dashboard.groups.map((group) => (
-              <div className="glossary-group" key={group.name}>
-                <div className="glossary-group-head">
-                  <FolderTree size={13} />
-                  <span>{group.name}</span>
-                  <small>{group.metrics.length}</small>
-                </div>
-                {group.metrics.map((metric) => {
-                  const open =
-                    openMetricId === metric.id ||
-                    (forceOpen && metric.search.includes(query))
-                  return (
-                    <div className="glossary-kpi" key={metric.id}>
-                      <button
-                        aria-expanded={open}
-                        className="glossary-kpi-head"
-                        onClick={() =>
-                          setOpenMetricId((current) =>
-                            current === metric.id ? null : metric.id,
-                          )
-                        }
-                        type="button"
-                      >
-                        <Sigma size={14} />
-                        <span className="glossary-kpi-name">{metric.name}</span>
-                        <span className="glossary-kpi-measure">
-                          {metric.measureName || '—'}
-                        </span>
-                        <CertBadge status={metric.certification} />
-                        <ChevronDown
-                          className={`glossary-kpi-chevron ${open ? '' : 'collapsed'}`}
-                          size={15}
-                        />
-                      </button>
-                      {open && (
-                        <MetricDetail
-                          metric={metric}
-                          onViewLineage={() => onViewLineage(metric.id)}
-                        />
-                      )}
-                    </div>
-                  )
-                })}
+      <div className="glossary-collapse">
+        <div className="glossary-collapse-inner">
+          <div className="glossary-dash-body">
+            {dashboard.groups.length === 0 ? (
+              <div className="glossary-group-empty">
+                No metrics from Project Explorer are linked to this dashboard
+                yet.
               </div>
-            ))
-          )}
+            ) : (
+              dashboard.groups.map((group) => (
+                <div className="glossary-group" key={group.name}>
+                  <div className="glossary-group-head">
+                    <FolderTree size={13} />
+                    <span>{group.name}</span>
+                    <small>{group.metrics.length}</small>
+                  </div>
+                  <div className="glossary-group-metrics">
+                    {group.metrics.map((metric) => (
+                      <MetricRow
+                        key={metric.id}
+                        metric={metric}
+                        onToggle={() => onToggleMetric(metric.id)}
+                        onViewLineage={() => onViewLineage(metric.id)}
+                        open={metricIsOpen(metric)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
-      )}
+      </div>
     </section>
   )
 }
@@ -312,7 +341,8 @@ export function GlossaryPage({
     [rows, assets, views],
   )
   const [query, setQuery] = useState('')
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [openMetrics, setOpenMetrics] = useState<Set<string>>(new Set())
 
   const normalizedQuery = query.trim().toLowerCase()
   const filteredDashboards = useMemo(
@@ -325,33 +355,51 @@ export function GlossaryPage({
     [glossary.dashboards, normalizedQuery],
   )
 
+  const updateQuery = (value: string) => {
+    setQuery(value)
+    // Clearing the search returns dashboards to the collapsed default state.
+    if (!value.trim()) {
+      setExpanded(new Set())
+      setOpenMetrics(new Set())
+    }
+  }
+
+  const toggleSet = (
+    setter: Dispatch<SetStateAction<Set<string>>>,
+    id: string,
+  ) => {
+    setter((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   // Empty state — no processed workbook yet.
   if (!rows.length) {
     return (
-      <div className="page-content workspace-page glossary-page">
-        <div className="page-heading glossary-heading">
-          <div>
-            <span className="eyebrow">Data governance</span>
-            <h1>Glossary</h1>
-            <p>
-              Search dashboards, metrics, definitions, linked assets, and
-              lineage from processed workbook data.
-            </p>
+      <div className="glossary-page">
+        <div className="glossary-inner">
+          <div className="page-heading glossary-heading">
+            <div>
+              <span className="eyebrow">Data governance</span>
+              <h1>Glossary</h1>
+              <p>
+                Search dashboards, metrics, definitions, linked assets, and
+                lineage from processed workbook data.
+              </p>
+            </div>
           </div>
-        </div>
-        <div className="glossary-empty glossary-empty-page">
-          <Database size={26} />
-          <strong>No glossary data available</strong>
-          <span>Process a workbook first to generate glossary metadata.</span>
+          <div className="glossary-empty glossary-empty-page">
+            <Database size={26} />
+            <strong>No glossary data available</strong>
+            <span>Process a workbook first to generate glossary metadata.</span>
+          </div>
         </div>
       </div>
     )
   }
-
-  const effectiveExpandedId =
-    expandedId && glossary.dashboards.some((d) => d.id === expandedId)
-      ? expandedId
-      : filteredDashboards[0]?.id ?? null
 
   const summary = [
     { label: 'Dashboards', value: glossary.totals.dashboards, icon: <FileBarChart2 size={18} /> },
@@ -362,51 +410,58 @@ export function GlossaryPage({
   ]
 
   return (
-    <div className="page-content workspace-page glossary-page">
-      <div className="page-heading glossary-heading">
-        <div>
-          <span className="eyebrow">Data governance</span>
-          <h1>Glossary</h1>
-          <p>
-            Search dashboards, metrics, definitions, linked assets, and lineage
-            from processed workbook data.
-          </p>
+    <div className="glossary-page">
+      <div className="glossary-inner">
+        <div className="page-heading glossary-heading">
+          <div>
+            <span className="eyebrow">Data governance</span>
+            <h1>Glossary</h1>
+            <p>
+              Search dashboards, metrics, definitions, linked assets, and
+              lineage from processed workbook data.
+            </p>
+          </div>
         </div>
-      </div>
 
-      <div className="glossary-summary glossary-summary-5">
-        {summary.map((card) => (
-          <article className="glossary-stat" key={card.label}>
-            {card.icon}
-            <div>
-              <strong>{card.value}</strong>
-              <span>{card.label}</span>
-            </div>
-          </article>
-        ))}
-      </div>
+        <div className="glossary-note">
+          <Info size={13} />
+          Derived live from your processed workbook, Project Explorer metrics,
+          and the lineage graph. Expand a dashboard to see its metric groups and
+          metrics.
+        </div>
 
-      <div className="glossary-search">
-        <Search size={16} />
-        <input
-          aria-label="Search dashboards, metrics, tables, columns, measures, owners"
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search dashboards, metrics, groups, tables, columns, measures, owners, certification..."
-          value={query}
-        />
-        {query && (
-          <button
-            aria-label="Clear search"
-            className="glossary-search-clear"
-            onClick={() => setQuery('')}
-            type="button"
-          >
-            <X size={14} />
-          </button>
-        )}
-      </div>
+        <div className="glossary-summary glossary-summary-5">
+          {summary.map((card) => (
+            <article className="glossary-stat" key={card.label}>
+              {card.icon}
+              <div>
+                <strong>{card.value}</strong>
+                <span>{card.label}</span>
+              </div>
+            </article>
+          ))}
+        </div>
 
-      <div className="glossary-body glossary-body-single">
+        <div className="glossary-search">
+          <Search size={16} />
+          <input
+            aria-label="Search dashboards, metrics, tables, columns, measures, owners"
+            onChange={(event) => updateQuery(event.target.value)}
+            placeholder="Search dashboards, metrics, groups, tables, columns, measures, owners, certification..."
+            value={query}
+          />
+          {query && (
+            <button
+              aria-label="Clear search"
+              className="glossary-search-clear"
+              onClick={() => updateQuery('')}
+              type="button"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
         <div className="glossary-list">
           {filteredDashboards.length === 0 ? (
             <div className="glossary-empty">
@@ -421,45 +476,19 @@ export function GlossaryPage({
             filteredDashboards.map((dashboard) => (
               <DashboardCard
                 dashboard={dashboard}
-                expanded={
-                  normalizedQuery
-                    ? true
-                    : effectiveExpandedId === dashboard.id
-                }
-                forceOpen={Boolean(normalizedQuery)}
                 key={dashboard.id}
-                onToggle={() =>
-                  setExpandedId((current) =>
-                    current === dashboard.id ? null : dashboard.id,
-                  )
+                onToggle={() => toggleSet(setExpanded, dashboard.id)}
+                onToggleMetric={(metricId) =>
+                  toggleSet(setOpenMetrics, metricId)
                 }
                 onViewLineage={onViewLineage}
+                open={normalizedQuery ? true : expanded.has(dashboard.id)}
+                openMetrics={openMetrics}
                 query={normalizedQuery}
               />
             ))
           )}
         </div>
-
-        <aside className="glossary-governance">
-          <div className="glossary-governance-head">
-            <Layers3 size={16} />
-            <h2>About this glossary</h2>
-          </div>
-          <p>
-            Every dashboard, metric, and linked asset here is derived live from
-            your processed workbook, Project Explorer metrics, and the lineage
-            graph — there is no sample data.
-          </p>
-          <ul>
-            <li>Dashboards are the report nodes from your lineage.</li>
-            <li>Metric groups mirror your Project Explorer views.</li>
-            <li>
-              Governance fields (owner, certification) come from the workbook
-              when present, otherwise show “Not available”.
-            </li>
-            <li>“View Lineage” focuses the metric in the Lineage tab.</li>
-          </ul>
-        </aside>
       </div>
     </div>
   )
