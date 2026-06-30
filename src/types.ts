@@ -150,4 +150,10 @@ export interface Relation {
   direction: string
 }
 
-export type AppView = 'upload' | 'preview' | 'lineage' | 'processed' | 'metric'
+export type AppView =
+  | 'upload'
+  | 'preview'
+  | 'lineage'
+  | 'processed'
+  | 'metric'
+  | 'glossary'

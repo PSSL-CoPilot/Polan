@@ -12,6 +12,7 @@ import './workspace.css'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { DashboardPage } from './components/DashboardPage'
 import { DataTable } from './components/DataTable'
+import { GlossaryPage } from './components/GlossaryPage'
 import { MetricModal, type MetricFormValues } from './components/MetricModal'
 import { MetricWorkspace } from './components/MetricWorkspace'
 import { Sidebar } from './components/Sidebar'
@@ -181,6 +182,9 @@ function App() {
     if (initialRouteRef.current || lineageRoute) return
     if (activeWorkbookId) {
       initialRouteRef.current = true
+      // Deliberate one-shot landing redirect after the workbook collection
+      // hydrates; runs once and never overrides later manual navigation.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActiveView((view) => (view === 'upload' ? 'preview' : view))
     }
   }, [activeWorkbookId, lineageRoute])
@@ -407,6 +411,21 @@ function App() {
   )
 
   const renderWorkspace = () => {
+    // ── Glossary ─────────────────────────────────────────────────────────────
+    // Governance glossary is mock-data driven, so it renders even without a
+    // workbook loaded (checked before the upload fallback below).
+    if (activeView === 'glossary') {
+      return (
+        <GlossaryPage
+          onViewMeasureLineage={() => {
+            // Navigate to the existing lineage tab. Deep-linking a specific
+            // measure is a TODO until glossary measures map to workbook metrics.
+            setActiveView('lineage')
+          }}
+        />
+      )
+    }
+
     // ── Metric workspace ────────────────────────────────────────────────────
     if (activeView === 'metric') {
       if (!activeMetric) {

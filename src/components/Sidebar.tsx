@@ -1,6 +1,7 @@
 import {
   ArrowUpDown,
   BarChart3,
+  BookOpen,
   ChevronDown,
   Database,
   GitBranch,
@@ -47,11 +48,14 @@ const NAV_ITEMS: Array<{
   label: string
   description: string
   icon: typeof BarChart3
+  /** Tabs that work without a loaded workbook (e.g. the governance glossary). */
+  alwaysEnabled?: boolean
 }> = [
   { id: 'preview', label: 'Dashboard', description: 'KPI overview', icon: BarChart3 },
   { id: 'lineage', label: 'Lineage graph', description: 'Asset relationships', icon: GitBranch },
   { id: 'processed', label: 'Processed data', description: 'Enriched output', icon: Database },
   { id: 'metric', label: 'Metric workspace', description: 'Metric definitions', icon: TableProperties },
+  { id: 'glossary', label: 'Glossary', description: 'Data governance', icon: BookOpen, alwaysEnabled: true },
 ]
 
 const readPaneState = (key: string, fallback: boolean) => {
@@ -180,7 +184,7 @@ export function Sidebar({
           <nav className="sidebar-nav" aria-label="Workspace navigation">
             {NAV_ITEMS.map((item) => {
               const Icon = item.icon
-              const disabled = !hasWorkbook
+              const disabled = item.alwaysEnabled ? false : !hasWorkbook
               return (
                 <button
                   className={`nav-item ${activeView === item.id ? 'active' : ''}`}
