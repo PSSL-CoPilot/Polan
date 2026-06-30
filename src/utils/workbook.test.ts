@@ -154,6 +154,53 @@ describe('workbook enrichment', () => {
     )
   })
 
+  it('treats the first column as Source Asset for Atlan exports lacking one', async () => {
+    // Mirrors Check1.xlsx / T_Cancels_By_Channel: the first column is named
+    // after the asset ("Cancels"), there is no explicit "Source Asset" column,
+    // but Impacted Asset / Direction / Qualified Name are present.
+    const header = [
+      'Cancels',
+      'Source Asset Connector',
+      'Source Asset Type',
+      'Impacted Asset',
+      'Impacted Asset Type',
+      'Direction',
+      'Qualified Name',
+      'Source Asset GUID',
+    ]
+    const dataRow = [
+      'T_cancels by channel',
+      'Power BI',
+      'Table',
+      'CUST_ACCT_DIM_MV',
+      'View',
+      'upstream',
+      'default/bigquery/1760585669/da-prod-dwh-dw01/DWH_QF_MM_BQD/CUST_ACCT_DIM_MV',
+      'c4c9e452-9fb5-4b8f-924e-2c075fc75482',
+    ]
+    const worksheet = XLSX.utils.aoa_to_sheet([header, dataRow])
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'T_Cancels_By_Channel')
+    const bytes = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+    const file = new File([bytes], 'check1.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+
+    const parsed = await parseWorkbookFile(file)
+    const sheet = parsed.sheets[0]
+
+    // Not marked invalid despite the missing "Source Asset" column.
+    expect(sheet.errors).toEqual([])
+    expect(sheet.rows).toHaveLength(1)
+    // Original first-column name is preserved for the table UI...
+    expect(sheet.originalColumns[0]).toBe('Cancels')
+    // ...but its value is mapped internally as the Source Asset.
+    expect(sheet.rows[0].sourceAsset).toBe('T_cancels by channel')
+    expect(sheet.rows[0].impactedAsset).toBe('CUST_ACCT_DIM_MV')
+    expect(sheet.rows[0].impactedAssetType).toBe('View')
+    expect(sheet.rows[0].direction).toBe('upstream')
+  })
+
   it('captures =HYPERLINK() formula links while keeping the visible text', async () => {
     const worksheet = XLSX.utils.json_to_sheet([row])
     // Real BI/Atlan exports store links as HYPERLINK formulas, not cell.l.

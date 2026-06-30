@@ -5,6 +5,21 @@ export const REQUIRED_COLUMNS = [
   'Qualified Name',
 ] as const
 
+/**
+ * Columns a sheet must contain *by name* to be considered valid lineage.
+ *
+ * "Source Asset" is intentionally excluded: Atlan lineage exports frequently
+ * name the first column after the asset itself (e.g. "Cancels") instead of
+ * "Source Asset". The parser falls back to the first column for the source asset
+ * value rather than rejecting the sheet, so only these three are strictly
+ * required.
+ */
+export const STRICT_REQUIRED_COLUMNS = [
+  'Impacted Asset',
+  'Direction',
+  'Qualified Name',
+] as const
+
 export const DERIVED_COLUMNS = [
   'Project Name',
   'Dataset Name',

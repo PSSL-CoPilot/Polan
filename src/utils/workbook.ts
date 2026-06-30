@@ -1,6 +1,7 @@
 import {
   DERIVED_COLUMNS,
   REQUIRED_COLUMNS,
+  STRICT_REQUIRED_COLUMNS,
   type CellHyperlink,
   type CellValue,
   type Layer,
@@ -76,6 +77,15 @@ export function deriveGovernance(datasetName: string): {
   }
 }
 
+/**
+ * Resolve each logical lineage column to an actual header name in the sheet.
+ *
+ * Atlan first-column fallback: when there is no explicit "Source Asset" column
+ * (Atlan exports often label the first column after the asset itself, e.g.
+ * "Cancels"), the first non-empty column that is not already claimed by another
+ * required column is used as the Source Asset. Its real header name is kept for
+ * display — only the internal mapping treats it as Source Asset.
+ */
 function resolveColumns(columns: string[]) {
   const byNormalizedName = new Map(
     columns.map((column) => [normalizedHeader(column), column]),
@@ -85,6 +95,17 @@ function resolveColumns(columns: string[]) {
   REQUIRED_COLUMNS.forEach((column) => {
     mapping[column] = byNormalizedName.get(normalizedHeader(column))
   })
+
+  if (!mapping['Source Asset']) {
+    const claimed = new Set(
+      STRICT_REQUIRED_COLUMNS.map((column) => mapping[column]).filter(
+        (value): value is string => Boolean(value),
+      ),
+    )
+    mapping['Source Asset'] = columns.find(
+      (column) => column.trim() !== '' && !claimed.has(column),
+    )
+  }
 
   return mapping
 }
@@ -110,7 +131,9 @@ function findHeaderRowOffset(matrix: CellValue[][]): number {
       .filter(Boolean)
     if (!candidate.length) continue
     const mapping = resolveColumns(candidate)
-    if (REQUIRED_COLUMNS.every((column) => mapping[column])) return index
+    // A header row is one that names every strictly-required column; Source
+    // Asset is resolved separately via the first-column fallback.
+    if (STRICT_REQUIRED_COLUMNS.every((column) => mapping[column])) return index
   }
   return 0
 }
@@ -123,7 +146,12 @@ export function processSheet(
 ): SheetData {
   const columns = originalColumns.filter(Boolean)
   const mapping = resolveColumns(columns)
-  const missingColumns = REQUIRED_COLUMNS.filter((column) => !mapping[column])
+  // Source Asset is excluded here on purpose — it falls back to the first column
+  // (see resolveColumns), so a sheet is only invalid when a strictly-required
+  // column is genuinely absent.
+  const missingColumns = STRICT_REQUIRED_COLUMNS.filter(
+    (column) => !mapping[column],
+  )
   const errors = missingColumns.length
     ? [`Missing required columns: ${missingColumns.join(', ')}`]
     : []
